@@ -6,6 +6,7 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QIcon
+from cvss_calc import CVSSCalcTab
 
 class ReconCraftUI(QMainWindow):
     def __init__(self):
@@ -25,6 +26,14 @@ class ReconCraftUI(QMainWindow):
         self.init_scan_tab()
         self.init_reports_tab()
         self.init_settings_tab()
+        self.init_cvss_tab()
+
+    def init_cvss_tab(self):
+        self.cvss_tab = CVSSCalcTab()
+        self.tabs.addTab(self.cvss_tab, QIcon("assets/cvss_icon.png"), "")
+        index = self.tabs.indexOf(self.cvss_tab)
+        self.tabs.setTabToolTip(index, "CVSS Calculator")
+        self.tabs.setTabText(index, "CVSS Calc.")
 
     def init_dashboard_tab(self):
         dashboard_tab = QWidget()
