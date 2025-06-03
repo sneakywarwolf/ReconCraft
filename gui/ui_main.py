@@ -21,10 +21,41 @@ class ReconCraftUI(QMainWindow):
 
         self.tabs = QTabWidget()
         self.setCentralWidget(self.tabs)
-
+        self.init_dashboard_tab()
         self.init_scan_tab()
         self.init_reports_tab()
         self.init_settings_tab()
+
+    def init_dashboard_tab(self):
+        dashboard_tab = QWidget()
+        layout = QVBoxLayout()
+
+        header = QLabel("🧭 Dashboard")
+        header.setAlignment(Qt.AlignCenter)
+        header.setStyleSheet("font-size: 18px; color: #00d9ff; font-weight: bold;")
+        layout.addWidget(header)
+
+        self.total_scans_label = QLabel("Total Scans Run: 5")
+        self.last_target_label = QLabel("Last Scan Target: example.com")
+        self.last_tools_label = QLabel("Tools Used: Nmap, Subfinder")
+        self.last_time_label = QLabel("Last Scan Time: 2025-06-03 10:30 AM")
+        self.last_status_label = QLabel("Scan Status: ✅ Successful")
+
+        for lbl in [
+            self.total_scans_label,
+            self.last_target_label,
+            self.last_tools_label,
+            self.last_time_label,
+            self.last_status_label,
+        ]:
+            lbl.setStyleSheet("font-size: 14px; color: #ffffff; margin: 6px 0;")
+            layout.addWidget(lbl)
+
+            # Add tab with icon only
+        index = self.tabs.insertTab(0, dashboard_tab, QIcon("assets/home_icon.png"), "HOME")
+
+            # Add tooltip for hover
+        self.tabs.setTabToolTip(index, "Summary of Scans")
 
     def init_scan_tab(self):
         scan_tab = QWidget()
@@ -67,9 +98,11 @@ class ReconCraftUI(QMainWindow):
         """)
         layout.addWidget(QLabel("Output:"))
         layout.addWidget(self.output_console)
-
+        
         scan_tab.setLayout(layout)
-        self.tabs.addTab(scan_tab, "Scan")
+        index = self.tabs.addTab(scan_tab, "Scan")
+        self.tabs.setTabToolTip(index, "Run reconnaissance tools")
+
 
     def init_reports_tab(self):
         reports_tab = QWidget()
@@ -87,7 +120,8 @@ class ReconCraftUI(QMainWindow):
         layout.addWidget(self.report_list)
 
         reports_tab.setLayout(layout)
-        self.tabs.addTab(reports_tab, "Reports")
+        index = self.tabs.addTab(reports_tab, "Reports")
+        self.tabs.setTabToolTip(index, "View generated scan reports")
 
     def init_settings_tab(self):
         settings_tab = QWidget()
@@ -105,7 +139,9 @@ class ReconCraftUI(QMainWindow):
         layout.addWidget(self.theme_button)
 
         settings_tab.setLayout(layout)
-        self.tabs.addTab(settings_tab, "Settings")
+        index = self.tabs.addTab(settings_tab, "Settings")
+        self.tabs.setTabToolTip(index, "Adjust preferences and theme")
+
 
     def toggle_theme(self):
         if self.dark_mode:
