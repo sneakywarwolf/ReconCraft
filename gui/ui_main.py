@@ -2,15 +2,18 @@
 from PyQt5.QtWidgets import (
     QMainWindow, QWidget, QTabWidget, QVBoxLayout,
     QPushButton, QTextEdit, QLineEdit, QLabel, QCheckBox,
-    QListWidget, QGroupBox, QHBoxLayout, QToolButton, QProgressBar, QAction  
+    QListWidget, QGroupBox, QHBoxLayout, QToolButton, QProgressBar,
+    QAction, QGridLayout  
 )
 from core.scan_thread import ScanThread
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from core.controller import scan_targets
 import datetime, os
+from datetime import datetime
 from PyQt5.QtGui import QIcon
 from cvss_calc import CVSSCalcTab
-
+from reconcraft import prepare_scan_directories
+import re
 class ReconCraftUI(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -52,80 +55,115 @@ class ReconCraftUI(QMainWindow):
             checkbox.setChecked(False)
         self.status_label.setText("Status: Select tools to run")    
 
+#ABORT SCAN
+    def abort_scan(self):
+        if hasattr(self, 'scan_thread') and self.scan_thread.isRunning():
+            self.scan_thread.terminate()  # Force kill (not recommended for long-term)
+            self.output_console.append("⚠️ Scan aborted by user.")
+            self.abort_button.setEnabled(False)
+            self.progress_bar.setValue(0)
+            self.status_label.setText("Scan aborted.")
+
+# HANDLE SCAN FINISHED
+    def handle_scan_finished(self, status):
+        self.update_status_label(status)
+        self.output_console.append("📌 Scan finished.")
+
 
 #DASHBOARD TAB
     def init_dashboard_tab(self):
-        dashboard_tab = QWidget()
+        
+        # Create the dashboard tab         
+        self.dashboard_tab = QWidget()
         layout = QVBoxLayout()
 
         # Logo/Icon (if you have a PNG)
         logo = QLabel()
-        logo.setPixmap(QIcon("assets/reconcraft_icon.png").pixmap(70, 70))
+        logo.setPixmap(QIcon("assets/reconcraft_icon.png").pixmap(170, 170))
         logo.setAlignment(Qt.AlignCenter)
+        logo.setStyleSheet("margin-top: 10px; margin-bottom: 20px;")
         layout.addWidget(logo)
 
-        # Welcome headline
-        header = QLabel("🧭 ReconCraft Dashboard")
-        header.setAlignment(Qt.AlignCenter)
-        header.setStyleSheet("font-size: 22px; color: #00d9ff; font-weight: bold; margin-top: 10px; margin-bottom: 10px;")
-        layout.addWidget(header)
 
-        # Stats area (use a group box for a card effect)
-        stats_group = QGroupBox()
-        stats_group.setStyleSheet("""
-            QGroupBox {
-                border: 2px solid #00d9ff;
-                border-radius: 12px;
-                margin-top: 8px;
-                background-color: #222;
-            }
-        """)
-        stats_layout = QVBoxLayout()
+        # 📊 Stylized Stats Grid using QGroupBox
+        stats_grid = QGridLayout()
+        stats_grid.setSpacing(12)
 
-        self.total_scans_label = QLabel("Total Scans Run: 5")
-        self.last_target_label = QLabel("Last Scan Target: example.com")
-        self.last_tools_label = QLabel("Tools Used: Nmap, Subfinder")
-        self.last_time_label = QLabel("Last Scan Time: 2025-06-03 10:30 AM")
-        self.last_status_label = QLabel("Scan Status: ✅ Successful")
-
-        for lbl in [
-            self.total_scans_label,
-            self.last_target_label,
-            self.last_tools_label,
-            self.last_time_label,
-            self.last_status_label,
-        ]:
-            lbl.setStyleSheet("font-size: 16px; color: #fff; margin: 8px 4px;")
-            stats_layout.addWidget(lbl)
-
-        stats_group.setLayout(stats_layout)
-        layout.addWidget(stats_group)
-
-        # Show last report file link (if any)
-        self.last_report_label = QLabel("Last Report: <a href='#'>demo_report_01.txt</a>")
-        self.last_report_label.setStyleSheet("font-size: 15px; color: #00ffae; margin: 12px 0 6px 0;")
+        # Initialize labels (these can be updated dynamically later)
+        self.total_scans_label = QLabel("5")
+        self.last_target_label = QLabel("example.com")
+        self.last_tools_label = QLabel("Nmap, Subfinder")
+        self.last_time_label = QLabel("2025-06-03 10:30 AM")
+        self.last_status_label = QLabel("✅ Successful")
+        self.last_report_label = QLabel("<a href='#'>demo_report_01.txt</a>")
         self.last_report_label.setOpenExternalLinks(False)
-        layout.addWidget(self.last_report_label)
+
+        # Define the metrics with labels
+        metrics = {
+            "🧮 Total Scans Run": self.total_scans_label,
+            "🕵️‍♂️ Last Target": self.last_target_label,
+            "🧰 Tools Used": self.last_tools_label,
+            "🕒 Last Scan Time": self.last_time_label,
+            "✅ Status": self.last_status_label,
+            "📁 Last Report": self.last_report_label
+        }
+
+        # Add each metric to the grid as a group card
+        row, col = 0, 0
+        for title, label in metrics.items():
+            group = QGroupBox(title)
+            group.setStyleSheet("""
+                QGroupBox {
+                    border: 2px solid #00d9ff;
+                    border-radius: 8px;
+                    margin-top: 6px;
+                    padding: 6px;
+                    font-weight: bold;
+                    color: #00d9ff;
+                }
+                QLabel {
+                    color: #ffffff;
+                    font-size: 15px;
+                }
+            """)
+            inner_layout = QVBoxLayout()
+            label.setStyleSheet("margin-left: 4px;")
+            inner_layout.addWidget(label)
+            group.setLayout(inner_layout)
+            stats_grid.addWidget(group, row, col)
+
+            col += 1
+            if col > 2:
+                col = 0
+                row += 1
+
+        # ✅ Add grid to layout
+        layout.addLayout(stats_grid)
 
         # Fun tip or quick link
         tip = QLabel("💡 <i>Tip: Review CVSS scores for your findings in the 'CVSS Calc.' tab!</i>")
         tip.setStyleSheet("font-size: 14px; color: #33c3f0; margin-top: 12px;")
         tip.setAlignment(Qt.AlignCenter)
         layout.addWidget(tip)
+     
+        # Dashboard tab setup
+        self.dashboard_tab.setLayout(layout)
 
-        dashboard_tab.setLayout(layout)
-
-        index = self.tabs.insertTab(0, dashboard_tab, QIcon("assets/home_icon.png"), "HOME")
-        self.tabs.setTabToolTip(index, "Summary of Scans")
-
-        # Added a method to update self.last_report_label on scan/report completion
-        self.tabs.setTabText(index, "Dashboard")
+        # 🛠️ Add tab and capture index
+        
+        index = self.tabs.addTab(self.dashboard_tab, QIcon("assets/home_icon.png"), "")
+        self.tabs.setTabToolTip(index, "🏠 Dashboard – Overview of your scans")
+        self.tabs.setTabText(index, "Dashboard")  # ✅ Use the captured index
 
 #SCAN TAB
     def init_scan_tab(self):
-        scan_tab = QWidget()
-        layout = QVBoxLayout()
 
+        # This defines the actual scan tab.
+        self.scan_tab = QWidget()  
+        layout = QVBoxLayout()
+        
+        self.scan_tab.setLayout(layout)  # ✅ Correct: apply layout to the tab actually being used
+    
         header = QLabel("🛠 ReconCraft - Reconnaissance Interface")
         header.setAlignment(Qt.AlignCenter)
         header.setStyleSheet("font-size: 18px; font-weight: bold; color: #00d9ff;")
@@ -176,20 +214,30 @@ class ReconCraftUI(QMainWindow):
             "Whois": QCheckBox("Whois"),
             "Subfinder": QCheckBox("Subfinder")
         }
-        for tool in self.tools.values():
-            tool_layout.addWidget(tool)
-
-        tool_group.setLayout(tool_layout)
-        layout.addWidget(tool_group)
-
+        
         for tool in self.tools.values():
             tool_layout.addWidget(tool)
         tool_group.setLayout(tool_layout)
         layout.addWidget(tool_group)
 
-        self.start_button = QPushButton("Start Scan")
+        #ADDING START & ABORT BUTTON
+        # Start Scan Button
+        self.start_button = QPushButton("▶ Start Scan")
         self.start_button.clicked.connect(self.launch_scan)
-        layout.addWidget(self.start_button)
+
+        # Abort Scan Button
+        self.abort_button = QPushButton("⛔ Abort Scan")
+        self.abort_button.setEnabled(False)
+        self.abort_button.clicked.connect(self.abort_scan)
+
+        # Horizontal layout for both buttons
+        button_layout = QHBoxLayout()
+        button_layout.addWidget(self.start_button)
+        button_layout.addWidget(self.abort_button)
+
+        # Add this button layout to the main layout
+        layout.addLayout(button_layout)
+
 
         self.progress_bar = QProgressBar()
         self.progress_bar.setValue(0)
@@ -232,10 +280,9 @@ class ReconCraftUI(QMainWindow):
         button_row.setLayout(button_layout)
         layout.addWidget(button_row)
 
-
-        scan_tab.setLayout(layout)
-        index = self.tabs.addTab(scan_tab, "Scan")
-        self.tabs.setTabToolTip(index, "Run reconnaissance tools")
+        scan_index=self.tabs.addTab(self.scan_tab, QIcon("assets/scan.png"), "")
+        self.tabs.setTabToolTip(scan_index, "🔍 Scan – Start recon with selected tools")
+        self.tabs.setTabText(scan_index, "Scan")
         
 #RESET TOOLS
     def reset_tools(self):
@@ -269,24 +316,11 @@ class ReconCraftUI(QMainWindow):
             self.output_console.append("❌ Please select at least one tool.")
             return
         
-         # ✅ Define base folder first
-        base_folder = "Scan Results"
-        os.makedirs(base_folder, exist_ok=True)
-
-        # ✅ Create parent scan results folder
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        scan_folder = os.path.join(base_folder, f"scan_results_{timestamp}")
-        os.makedirs(scan_folder, exist_ok=True)
-
-        # ✅ Step 3: Create reports subfolder
-        reports_folder = os.path.join(scan_folder, "reports")
-        os.makedirs(reports_folder, exist_ok=True)
-
-        # ✅ Step 4: Set report path for the thread
-        self.report_path = scan_folder  # 👈 pass scan_folder, not just timestamp
-
-        # ✅ Step 5: Start thread
-        self.scan_thread = ScanThread(targets, selected_plugins, self.report_path)
+        # Prepare scan folder using target[0]
+        scan_folder = self.prepare_scan_folder(targets[0])
+        if not scan_folder:
+            self.output_console.append("❌ Failed to prepare scan directory.")
+            return
 
         # ✅ Log starting message
         self.output_console.append(f"🚀 Starting scan on {len(targets)} target(s)...")
@@ -300,19 +334,66 @@ class ReconCraftUI(QMainWindow):
         self.scan_thread.finished_signal.connect(lambda: self.update_dashboard(', '.join(targets), selected_plugins))
         self.scan_thread.start()
         self.output_console.append("🔄 Scan in progress...")
+        
+        #This ensures the scan status (done_success or done_error) is passed to the handle_scan_finished()
+        self.scan_thread.finished_signal.connect(self.handle_scan_finished)
 
-#UPDATE STATUS LABEL
+
+        self.scan_thread.finished_signal.connect(
+            lambda status: (
+                self.update_status_label(status),
+                self.update_dashboard(', '.join(targets), selected_plugins)
+            )
+        )
+
+
+# UPDATE STATUS LABEL
     def update_status_label(self, status):
         if status == "indeterminate":
             self.status_label.setText("Status: Initializing...")
+            self.progress_bar.setStyleSheet("""
+                QProgressBar {
+                    border: 1px solid #444;
+                    border-radius: 5px;
+                    text-align: center;
+                    background-color: #111;
+                    color: #ffffff;
+                }
+                QProgressBar::chunk {
+                    background-color: #cccc00;
+                }
+            """)
         elif status == "done_success":
             self.status_label.setText("Status: ✅ Scan completed successfully.")
-            self.progress_bar.setStyleSheet("QProgressBar::chunk { background-color: #00c853; }")
+            self.progress_bar.setStyleSheet("""
+                QProgressBar {
+                    border: 1px solid #444;
+                    border-radius: 5px;
+                    text-align: center;
+                    background-color: #111;
+                    color: #ffffff;
+                }
+                QProgressBar::chunk {
+                    background-color: #00c853;
+                }
+            """)
         elif status == "done_error":
             self.status_label.setText("Status: ❌ Scan completed with some errors.")
-            self.progress_bar.setStyleSheet("QProgressBar::chunk { background-color: #ff1744; }")
+            self.progress_bar.setStyleSheet("""
+                QProgressBar {
+                    border: 1px solid #444;
+                    border-radius: 5px;
+                    text-align: center;
+                    background-color: #111;
+                    color: #ffffff;
+                }
+                QProgressBar::chunk {
+                    background-color: #d32f2f;  /* Red for error */
+                }
+            """)
         elif "Completed" in status:
             self.status_label.setText(status)
+
 
 
 #DASHBOARD UPDATE
@@ -320,7 +401,7 @@ class ReconCraftUI(QMainWindow):
         self.total_scans_label.setText("Total Scans Run: updated dynamically")
         self.last_target_label.setText(f"Last Scan Target: {target}")
         self.last_tools_label.setText(f"Tools Used: {', '.join(plugins)}")
-        now = datetime.datetime.now().strftime("%Y-%m-%d %I:%M %p")
+        now = datetime.now().strftime("%Y-%m-%d %I:%M %p")
         self.last_time_label.setText(f"Last Scan Time: {now}")
         self.last_status_label.setText("Scan Status: ✅ Successful")
 
@@ -328,7 +409,9 @@ class ReconCraftUI(QMainWindow):
 
 #THIS IS FOR REPORT TAB
     def init_reports_tab(self):
-        reports_tab = QWidget()
+        
+        # This defines the actual reports tab.
+        self.report_tab = QWidget()
         layout = QVBoxLayout()
 
         header = QLabel("📁 Reports")
@@ -342,24 +425,36 @@ class ReconCraftUI(QMainWindow):
         layout.addWidget(QLabel("Available Reports:"))
         layout.addWidget(self.report_list)
 
-        reports_tab.setLayout(layout)
-        index = self.tabs.addTab(reports_tab, "Reports")
-        self.tabs.setTabToolTip(index, "View generated scan reports")
+        #Attaching it to the layout
+        self.report_tab.setLayout(layout) 
+
+        report_index=self.tabs.addTab(self.report_tab, QIcon("assets/report.png"), "")
+        self.tabs.setTabToolTip(report_index, "📊 Reports – View generated scan reports")
+        self.tabs.setTabText(report_index, "Reports")
 
    
-#PREPARE SCAN FOLDER
-    def prepare_scan_folder(self):
+#PREPARE SCAN RESULT FOLDER
+    def prepare_scan_folder(self, target):
         base_folder = "Scan Results"
-        timestamp = datetime.now().strftime("scan_%Y-%m-%d_%H-%M-%S")
-        scan_folder_path = os.path.join(base_folder, timestamp)
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+
+        # Sanitize target for filesystem safety
+        safe_target = re.sub(r'[^\w.-]', '_', target)
+
+        # Combine sanitized name + timestamp
+        folder_name = f"{safe_target}_{timestamp}"
+        scan_folder_path = os.path.join(base_folder, folder_name)
 
         os.makedirs(scan_folder_path, exist_ok=True)
         return scan_folder_path
 
 
+
 #SETTINGS TAB
     def init_settings_tab(self):
-        settings_tab = QWidget()
+        
+        # This defines the actual settings tab.
+        self.settings_tab = QWidget()
         layout = QVBoxLayout()
 
         header = QLabel("⚙ Settings")
@@ -373,9 +468,12 @@ class ReconCraftUI(QMainWindow):
         self.theme_button.clicked.connect(self.toggle_theme)
         layout.addWidget(self.theme_button)
 
-        settings_tab.setLayout(layout)
-        index = self.tabs.addTab(settings_tab, "Settings")
-        self.tabs.setTabToolTip(index, "Adjust preferences and theme")
+        #Attaching it to the layout
+        self.settings_tab.setLayout(layout)
+
+        settings_index=self.tabs.addTab(self.settings_tab, QIcon("assets/settings.jpg"), "")
+        self.tabs.setTabToolTip(settings_index, "⚙️ Settings – Customize ReconCraft preferences")
+        self.tabs.setTabText(settings_index, "Settings")
 
 #TOGGLE THEME
 

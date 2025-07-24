@@ -105,7 +105,26 @@ class CVSSCalcTab(QWidget):
         label, tooltip = self.metric_labels[metric]
         group = QGroupBox(label)
         group.setToolTip(tooltip)
+        group.setStyleSheet("""
+            QGroupBox {
+            color: #00d9ff;
+            font-size: 14px;
+            font-weight: bold;
+            border: 1px solid #00d9ff;
+            border-radius: 6px;
+            margin-top: 12px;
+            padding-top: 10px; /* Push the content lower, make title visible */
+        }
+            QGroupBox:title {
+            subcontrol-origin: margin;
+            subcontrol-position: top center;
+            padding: 0 6px;
+            color: #00d9ff;
+        }
+
+        """)
         layout = QHBoxLayout()
+
         buttons = []
 
         tooltip_texts = {

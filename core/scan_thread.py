@@ -5,7 +5,7 @@ import concurrent.futures
 
 class ScanThread(QThread):
     log_signal = pyqtSignal(str)
-    finished_signal = pyqtSignal()
+    finished_signal = pyqtSignal(str)
     progress_signal = pyqtSignal(int)
     status_signal = pyqtSignal(str)
 
@@ -19,8 +19,9 @@ class ScanThread(QThread):
 
     def run(self):
         os.makedirs(self.report_root_folder, exist_ok=True)
-
         self.log_signal.emit(f"⚙ Launching tools on {len(self.targets)} target(s)...")
+
+        error_occurred = False  # ✅ Track if any tool fails
 
         with concurrent.futures.ThreadPoolExecutor() as executor:
             futures = []
@@ -32,13 +33,28 @@ class ScanThread(QThread):
                     futures.append(executor.submit(self.run_tool_and_save, tool, target, target_folder))
 
             for future in concurrent.futures.as_completed(futures):
-                result_msg = future.result()
+                result = future.result()
+
+                # ✅ Support both old and updated return values
+                if isinstance(result, tuple):
+                    result_msg, had_error = result
+                    if had_error:
+                        error_occurred = True
+                else:
+                    result_msg = result  # fallback
+                    error_occurred = True
+
                 self.completed_tasks += 1
                 progress_percent = int((self.completed_tasks / self.total_tasks) * 100)
                 self.log_signal.emit(result_msg)
                 self.progress_signal.emit(progress_percent)
 
-        self.finished_signal.emit()
+        # ✅ Emit final status based on error flag
+        if error_occurred:
+            self.finished_signal.emit("done_error")
+        else:
+            self.finished_signal.emit("done_success")
+
 
     def run_tool_and_save(self, tool, target, target_folder):
         try:
@@ -48,11 +64,12 @@ class ScanThread(QThread):
             with open(file_path, "w", encoding="utf-8") as f:
                 f.write(output)
 
-            return f"✅ {tool} finished for {target}. Output saved to: {file_path}"
+            return f"✅ {tool} finished for {target}. Output saved to: {file_path}", False  # No error
         except subprocess.CalledProcessError as e:
-            return f"❌ {tool} failed for {target}: {e.output}"
+            return f"❌ {tool} failed for {target}: {e.output}", True
         except Exception as e:
-            return f"❌ {tool} crashed for {target}: {str(e)}"
+            return f"❌ {tool} crashed for {target}: {str(e)}", True
+
 
     def run_tool(self, tool, target):
         if tool == "nmap":

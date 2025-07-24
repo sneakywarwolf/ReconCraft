@@ -15,15 +15,6 @@ logging.basicConfig(
     level=logging.INFO
 )
 
-timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-BASE_DIR = f"scan_results_{timestamp}"
-CVE_DIR = os.path.join(BASE_DIR, "cve_results")
-RAW_DIR = os.path.join(BASE_DIR, "raw_outputs")
-REPORT_DIR = os.path.join(BASE_DIR, "reports")
-os.makedirs(CVE_DIR, exist_ok=True)
-os.makedirs(RAW_DIR, exist_ok=True)
-os.makedirs(REPORT_DIR, exist_ok=True)
-
 report_data = {}
 
 def read_ip_list(file_path):
@@ -131,23 +122,34 @@ def scan_target(ip, plugins):
             report_data[ip][plugin.__name__] = f"Failed: {e}"
             logging.warning(f"[!] Plugin {plugin.__name__} failed for {ip}: {e}")
 
+##Creates the internal structure inside that path: reports/ and logs/, and returns a dictionary of paths.
+def prepare_scan_directories(base_path): 
+    """
+    Creates the standard directory structure under the given base path.
+    Returns a dictionary with the paths.
+    """
+    os.makedirs(base_path, exist_ok=True)
+    reports_path = os.path.join(base_path, "Sub-Reports")
+    logs_path = os.path.join(base_path, "Logs")
+
+    os.makedirs(reports_path, exist_ok=True)
+    os.makedirs(logs_path, exist_ok=True)
+
+    return {
+        "base": base_path,
+        "reports": reports_path,
+        "logs": logs_path
+    }
+
+
 def main():
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    base_dir = f"scan_results_{timestamp}"
-    cve_dir = os.path.join(base_dir, "cve_results")
-    raw_dir = os.path.join(base_dir, "raw_outputs")
-    report_dir = os.path.join(base_dir, "reports")
     
-    os.makedirs(cve_dir, exist_ok=True)
-    os.makedirs(raw_dir, exist_ok=True)
-    os.makedirs(report_dir, exist_ok=True)
-    
-    global BASE_DIR, CVE_DIR, RAW_DIR, REPORT_DIR
+    """   global BASE_DIR, CVE_DIR, RAW_DIR, REPORT_DIR
     BASE_DIR = base_dir
     CVE_DIR = cve_dir
     RAW_DIR = raw_dir
     REPORT_DIR = report_dir
-    
+    """
     
     parser = argparse.ArgumentParser(description="ReconCraft - Active Reconnaissance Tool")
     parser.add_argument("-f", "--file", default="ip-list.txt", help="Path to file containing target IPs or domains")
