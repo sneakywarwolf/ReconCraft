@@ -1,0 +1,14 @@
+"""
+<PLUGIN NAME> - Brief description of what this plugin does.
+"""
+
+def run(ip, raw_dir, base_dir, run_command, check_tool_installed, extract_cves):
+    # Check tool is installed
+    if not check_tool_installed("<binary-name>"):
+        print(f"[!] <binary-name> not installed. Skipping {ip}.")
+        return
+    # Run command and save output
+    raw_file = f"{ip}_<plugin>.txt"
+    output_path = run_command([ "<binary-name>", "<arg>", ip ], raw_file)
+    # Optional: extract CVEs if relevant
+    extract_cves(output_path, ip)

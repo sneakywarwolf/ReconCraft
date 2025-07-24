@@ -77,7 +77,7 @@ class CVSSCalcTab(QWidget):
         score_row.addWidget(self.result_label)
 
         self.copy_button = QPushButton()
-        self.copy_button.setIcon(QIcon("assets/copy_icon.png"))
+        self.copy_button.setIcon(QIcon("assets/copy_icon.jpg"))
         self.copy_button.setIconSize(QSize(24, 24))
         self.copy_button.setFixedSize(36, 36)
         self.copy_button.setStyleSheet("border: none; padding: 0px;")

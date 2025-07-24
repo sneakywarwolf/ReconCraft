@@ -40,21 +40,46 @@ def check_tool_installed(tool_name):
 def run_command(command, raw_file):
     logging.info(f"Executing: {command}")
     full_path = os.path.join(RAW_DIR, raw_file)
-    with open(full_path, "w") as out:
-        subprocess.call(command, shell=True, stdout=out, stderr=subprocess.STDOUT)
-    return full_path
+
+    try:
+        if isinstance(command, str):
+            command = command.split()
+
+        result = subprocess.run(
+            command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            timeout=180, text=True
+        )
+
+        with open(full_path, "w") as out:
+            out.write(result.stdout)
+
+        return full_path
+
+    except subprocess.TimeoutExpired:
+        logging.error(f"[!] Command timed out: {' '.join(command)}")
+        return full_path
+
+    except Exception as e:
+        logging.error(f"[!] Command execution failed: {e}")
+        return full_path
+
 
 def extract_cves(raw_path, ip):
     cve_file = os.path.join(CVE_DIR, f"{ip}_cves.txt")
-    found_cves = []
+    found_cves = set()
+
     with open(raw_path, "r", errors="ignore") as raw, open(cve_file, "w") as out:
         for line in raw:
             if "CVE-" in line:
-                out.write(line)
-                result = subprocess.getoutput(f'searchsploit "{line.strip()}"')
-                out.write(result + "\n\n")
-                found_cves.append(line.strip())
-    return found_cves
+                cve_candidates = [word for word in line.strip().split() if "CVE-" in word]
+                for cve in cve_candidates:
+                    if cve not in found_cves:
+                        found_cves.add(cve)
+                        out.write(cve + "\n")
+                        result = subprocess.getoutput(f'searchsploit {cve}')
+                        out.write(result + "\n\n")
+
+    return list(found_cves)
 
 def list_available_plugins():
     plugin_dir = "plugins"
@@ -107,6 +132,23 @@ def scan_target(ip, plugins):
             logging.warning(f"[!] Plugin {plugin.__name__} failed for {ip}: {e}")
 
 def main():
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    base_dir = f"scan_results_{timestamp}"
+    cve_dir = os.path.join(base_dir, "cve_results")
+    raw_dir = os.path.join(base_dir, "raw_outputs")
+    report_dir = os.path.join(base_dir, "reports")
+    
+    os.makedirs(cve_dir, exist_ok=True)
+    os.makedirs(raw_dir, exist_ok=True)
+    os.makedirs(report_dir, exist_ok=True)
+    
+    global BASE_DIR, CVE_DIR, RAW_DIR, REPORT_DIR
+    BASE_DIR = base_dir
+    CVE_DIR = cve_dir
+    RAW_DIR = raw_dir
+    REPORT_DIR = report_dir
+    
+    
     parser = argparse.ArgumentParser(description="ReconCraft - Active Reconnaissance Tool")
     parser.add_argument("-f", "--file", default="ip-list.txt", help="Path to file containing target IPs or domains")
     parser.add_argument("-p", "--plugins", help="Comma-separated list of plugins to run (e.g., nmap,nuclei,nikto)")
@@ -121,10 +163,13 @@ def main():
             print(f"[!] Plugin '{name}' already exists.")
         else:
             with open(path, "w") as f:
-                f.write(f'"""\n{name} - Describe what this plugin does.\n"""
-\ndef run(ip, raw_dir, base_dir, run_command, check_tool_installed, extract_cves):\n    pass\n')
-            print(f"[+] Plugin '{name}' created at: {path}")
-        return
+                f.write(f'''"""
+            {name} - Describe what this plugin does.
+            """
+
+            def run(ip, raw_dir, base_dir, run_command, check_tool_installed, extract_cves):
+                pass
+            ''')
 
     if args.list_plugins:
         available = list_available_plugins()

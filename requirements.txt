@@ -1,6 +1,15 @@
-# All current modules are built-in for Python 3.6+
-# Add more packages below as needed:
-# requests
-# pyyaml
-# flask
-# rich
+# Core GUI dependencies
+PyQt5>=5.15.9
+
+# Optional plugin/tool handling
+requests>=2.31.0
+psutil>=5.9.8
+
+# For typing hints and optional development tools
+typing-extensions>=4.10.0
+
+# If you plan to use YAML configs in future
+PyYAML>=6.0.1
+
+# For compatibility with some subprocess tools (optional but useful)
+colorama>=0.4.6
