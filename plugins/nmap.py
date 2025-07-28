@@ -1,9 +1,12 @@
 """
 nmap - Port and service discovery using Nmap.
 """
+REQUIRED_TOOL = "nmap"
+
+
 def run(ip, raw_dir, base_dir, run_command, check_tool_installed, extract_cves):
     if not check_tool_installed("nmap"):
-        print(f"[!] nmap not installed. Skipping {ip}.")
+        print(f"[!] nmap not installed. Skipping {ip}.", True)
         return
     raw_file = f"{ip}_nmap.txt"
     output_path = run_command(["nmap", "-sV", ip], raw_file)

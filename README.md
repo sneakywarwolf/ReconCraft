@@ -1,106 +1,104 @@
-# 🚀 ReconCraft - Advanced Reconnaissance Automation Tool
+# 🧭 ReconCraft GUI
 
-**ReconCraft** is a modular, plugin-driven CLI utility that enhances efficiency, accuracy, and speed during active reconnaissance. Designed for hybrid environments, it supports IPs, domains, and URLs as targets and is flexible enough for both red team professionals and beginner developers.
-
----
-
-## 🧰 Features
-
-- ✅ **Plugin-Based Architecture** – Easily extend with custom plugins
-- ✅ **Cross-Platform Installer** – Python-based setup with support for Linux and Windows (via `winget`)
-- ✅ **Multiple Scanners Integrated**
-  - `nmap`, `naabu`, `nuclei`, `nikto`, `testssl.sh`, `enum4linux`, and more
-- ✅ **CVE Extraction** from raw scan outputs using `searchsploit`
-- ✅ **Auto-Report Generation**
-  - Structured `report.json` output under timestamped directories
-- ✅ **Dynamic Plugin Selection**
-  - Choose specific plugins per scan via CLI
-- ✅ **Self-Documenting Plugins**
-  - Use `--list-plugins` to view and manage available modules
-- ✅ **Plugin Boilerplate Generator**
-  - Create new plugins with `--create-plugin <name>`
+> **ReconCraft** is a powerful, modular, and visually interactive reconnaissance automation tool for security professionals and bug bounty hunters.
 
 ---
 
-## 🖥️ Getting Started
+## 🚀 Features
 
-### 🔧 Installation
+- 🎯 **Multi-target scanning** — Input multiple domains or IPs.
+- 🔌 **Plugin-based architecture** — Integrate tools like Nmap, Subfinder, Naabu, and more.
+- 📁 **Auto-organized Reports** — Every scan saved in a well-structured directory.
+- 📊 **Stylish Dashboard** — Real-time stats: scan status, tools used, latest reports, and more.
+- 🧮 **CVSS v3.1 Calculator** — Score vulnerabilities with an interactive metric selector.
+- 💡 **Dark mode UI** — Futuristic and user-friendly interface built with PyQt5.
 
+---
+
+## 📸 Screenshots
+
+| Dashboard | CVSS Calculator |
+|----------|----------------|
+| ![Dashboard](assets/demo_dashboard.png) | ![CVSS](assets/demo_cvss.png) |
+
+---
+
+## 🛠️ Getting Started
+
+### 1. Clone the Repo
 ```bash
-git clone https://github.com/yourusername/reconcraft.git
-cd reconcraft
-python install.py
+git clone https://github.com/Sneakywarwolf/ReconCraft.git
+cd ReconCraft
 ```
 
-### 📂 File Structure
+### 2. Install Dependencies
+```bash
+pip install -r requirements.txt
+```
+
+### 3. Launch the App
+```bash
+python main.py
+```
+
+---
+
+## 🔧 Settings & Customization
+
+Configure plugin paths and tool settings via the **Settings** tab. More control coming soon!
+
+---
+
+## 📚 Tech Stack
+
+- 🐍 Python 3.x
+- 🎨 PyQt5 (for GUI)
+- ⚙️ subprocess (for tool execution)
+- 📊 cvsslib (for CVSS scoring)
+
+---
+
+## 📦 Folder Structure
 
 ```
 ReconCraft/
-├── plugins/            # Modular scanning plugins
-├── third_party/        # Optional local tool binaries (future)
-├── scan_results_*/     # Time-stamped scan output folders
-│   ├── raw_outputs/
-│   ├── cve_results/
-│   └── reports/
-├── install.py          # Cross-platform installer
-├── requirements.txt
-└── reconcraft.py       # Main executable script
+├── assets/              # Icons, logos, demo screenshots
+├── core/                # Main scan logic & threading
+├── plugins/             # Tool-specific logic (e.g., nmap, subfinder)
+├── reports/             # Saved output for each scan
+├── gui/                 # UI logic, tabs, widgets
+├── main.py              # Launcher
+└── README.md
 ```
 
 ---
 
-## ⚙️ Usage
+## ✨ Upcoming Enhancements
 
-### 🔎 Basic Scan (Runs All Plugins)
-
-```bash
-python reconcraft.py -f ip-list.txt
-```
-
-### 🎯 Scan with Selected Plugins
-
-```bash
-python reconcraft.py -f ip-list.txt -p nmap,nuclei,nikto
-```
-
-### 📜 List Available Plugins
-
-```bash
-python reconcraft.py --list-plugins
-```
-
-### ⚡ Create a New Plugin
-
-```bash
-python reconcraft.py --create-plugin myscanner
-```
+- 🧩 Add more plugins (e.g., Shodan, Wappalyzer)
+- 📑 Full report viewer with search & export to PDF
+- ⚙️ Advanced tool configuration per plugin in Settings
 
 ---
 
-## 🌱 Roadmap
+## 🤝 Contribute
 
-We are actively building more features to make ReconCraft a truly comprehensive recon suite:
-
-- 🌐 **Optional Web UI/UX Dashboard**
-- 📦 **Built-in third_party/ tools** for non-installable binaries
-- 📊 **Markdown & HTML Report Generation**
-- 💾 **JSON export per plugin**
-- 🔒 **Plugin Signature Verification** (for marketplace integration)
+Feel free to fork, suggest features, or submit pull requests. We welcome contributions!
 
 ---
 
-## 🤝 Contributing
+## 🔐 Disclaimer
 
-We aim to keep ReconCraft beginner-friendly! If you’re a new developer or a seasoned hacker, check out our well-structured plugins and start contributing.
-
----
-
-## 📜 License
-
-MIT License. Tool usage is your responsibility. We are not liable for any misuse.
+This tool is intended for **authorized security assessments only**. Use it responsibly.
 
 ---
 
-## 👨‍💻 Developed by
+## 🌐 Connect
 
-**ReconCraft Team** – Helping teams recon smarter and faster.
+- 💬 [LinkedIn](https://www.linkedin.com/in/nirmalchak)
+- 🐙 [GitHub](https://github.com/sneakywarwolf)
+- ✉️ sneakypentester@gmail.com
+
+---
+
+> Made with ❤️ for Recon lovers.

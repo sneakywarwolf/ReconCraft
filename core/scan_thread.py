@@ -2,6 +2,7 @@ from PyQt5.QtCore import QThread, pyqtSignal
 import subprocess
 import os
 import concurrent.futures
+import importlib
 
 class ScanThread(QThread):
     log_signal = pyqtSignal(str)
@@ -16,12 +17,29 @@ class ScanThread(QThread):
         self.report_root_folder = report_root_folder
         self.total_tasks = len(targets) * len(tools)
         self.completed_tasks = 0
+        self.plugin_map = {}
+        self.load_plugins()
+
+    def load_plugins(self):
+        plugin_folder = "plugins"
+        for file in os.listdir(plugin_folder):
+            if file.endswith(".py") and not file.startswith("__"):
+                plugin_name = file[:-3]
+                module = importlib.import_module(f"plugins.{plugin_name}")
+                self.plugin_map[plugin_name] = module.run
+
+    def get_all_tools(self):
+        """
+        Returns the list of dynamically loaded plugin tools only.
+        """
+        return list(self.plugin_map.keys())
+
 
     def run(self):
+        
+        error_occurred = False  # ✅ Track if any tool fails
         os.makedirs(self.report_root_folder, exist_ok=True)
         self.log_signal.emit(f"⚙ Launching tools on {len(self.targets)} target(s)...")
-
-        error_occurred = False  # ✅ Track if any tool fails
 
         with concurrent.futures.ThreadPoolExecutor() as executor:
             futures = []
@@ -55,7 +73,6 @@ class ScanThread(QThread):
         else:
             self.finished_signal.emit("done_success")
 
-
     def run_tool_and_save(self, tool, target, target_folder):
         try:
             output = self.run_tool(tool, target)
@@ -70,16 +87,37 @@ class ScanThread(QThread):
         except Exception as e:
             return f"❌ {tool} crashed for {target}: {str(e)}", True
 
-
     def run_tool(self, tool, target):
-        if tool == "nmap":
-            return subprocess.check_output(["nmap", "-Pn", target], text=True, stderr=subprocess.STDOUT)
-
-        elif tool == "whois":
-            return subprocess.check_output(["whois", target], text=True, stderr=subprocess.STDOUT)
-
-        elif tool == "subfinder":
-            return subprocess.check_output(["subfinder", "-d", target, "-silent"], text=True, stderr=subprocess.STDOUT)
-
+        # ⚙️ Plugin-based tools only (built-in tools removed)
+        if tool in self.plugin_map:
+            raw_dir = os.path.join(self.report_root_folder, "raw")
+            os.makedirs(raw_dir, exist_ok=True)
+            self.plugin_map[tool](
+                ip=target,
+                raw_dir=raw_dir,
+                base_dir=self.report_root_folder,
+                run_command=self.run_command,
+                check_tool_installed=self.check_tool_installed,
+                extract_cves=self.extract_cves,
+            )
+            return f"🔌 Plugin {tool} executed for {target}"
         else:
             raise Exception(f"Tool '{tool}' is not supported.")
+
+
+    # 🔧 Helper methods passed into plugins
+    def run_command(self, cmd_list, outfile_name):
+        out_path = os.path.join(self.report_root_folder, "raw", outfile_name)
+        with open(out_path, "w", encoding="utf-8") as f:
+            subprocess.run(cmd_list, stdout=f, stderr=subprocess.STDOUT, check=True)
+        return out_path
+
+    def check_tool_installed(self, tool_name):
+        return any(
+            os.access(os.path.join(path, tool_name), os.X_OK)
+            for path in os.environ["PATH"].split(os.pathsep)
+        )
+
+    def extract_cves(self, filepath, ip):
+        # Optional placeholder for plugin CVE parsing
+        pass

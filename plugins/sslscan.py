@@ -1,22 +1,22 @@
 """
-Nuclei - Scans for known vulnerabilities using templates.
+Sslscan - Scans SSL services and ciphers supported by the server.
 """
-REQUIRED_TOOL = "nuclei"
+REQUIRED_TOOL = "sslscan"
 
 
 def run(ip_or_domain, raw_dir, base_dir, run_command, check_tool_installed, extract_cves):
-    plugin_name = "nuclei"
+    plugin_name = "sslscan"
 
     # ✅ Step 1: Check if tool is installed
-    if not check_tool_installed("nuclei"):
-        print(f"[!] nuclei is not installed. Skipping {ip_or_domain}.", True)
+    if not check_tool_installed("sslscan"):
+        print(f"[!] sslscan is not installed. Skipping {ip_or_domain}.", True)
         return
 
     # ✅ Step 2: Set output file path
     raw_file = f"{ip_or_domain}_{plugin_name}.txt"
 
     # ✅ Step 3: Run the command
-    cmd = ["nuclei"] + ['-u'] + [ip_or_domain]
+    cmd = ["sslscan"] + [] + [ip_or_domain]
     output_path = run_command(cmd, raw_file)
 
     # ✅ Step 4: Optionally extract CVEs

@@ -3,39 +3,96 @@ from PyQt5.QtWidgets import (
     QMainWindow, QWidget, QTabWidget, QVBoxLayout,
     QPushButton, QTextEdit, QLineEdit, QLabel, QCheckBox,
     QListWidget, QGroupBox, QHBoxLayout, QToolButton, QProgressBar,
-    QAction, QGridLayout  
+    QGridLayout, QListWidgetItem, QTreeWidget, QTreeWidgetItem, QFileDialog
 )
 from core.scan_thread import ScanThread
-from PyQt5.QtCore import Qt, QThread, pyqtSignal
-from core.controller import scan_targets
-import datetime, os
+from PyQt5.QtCore import Qt, pyqtSignal, QUrl, QSize
+import datetime, os, sys
 from datetime import datetime
-from PyQt5.QtGui import QIcon
-from cvss_calc import CVSSCalcTab
-from reconcraft import prepare_scan_directories
-import re
+from PyQt5.QtGui import QIcon, QDesktopServices
+from core.cvss_calc import CVSSCalcTab
+import re, shutil, subprocess, platform, webbrowser
+from pathlib import Path
+from gui.flow_layout import FlowLayout
+import importlib.util
+
+#GLOBAL FUNCTION TO INSTALL TOOLS
+def try_install_tool(tool_bin, output_func, max_attempts=2):
+        system = platform.system().lower()
+        attempts = 0
+        installed = False
+        methods = []
+
+        # Define all install methods you want to try in order
+        if system == "linux" and shutil.which("apt"):
+            methods.append(("apt", ["sudo", "apt", "install", "-y", tool_bin]))
+        if system == "darwin" and shutil.which("brew"):
+            methods.append(("brew", ["brew", "install", tool_bin]))
+        if system == "windows" and shutil.which("choco"):
+            methods.append(("choco", ["choco", "install", tool_bin, "-y"]))
+        methods.append(("pip", [sys.executable, "-m", "pip", "install", tool_bin]))
+        if shutil.which("go"):
+            go_path = f"github.com/projectdiscovery/{tool_bin}/cmd/{tool_bin}@latest"
+            methods.append(("go", ["go", "install", go_path]))
+
+        for method_name, cmd in methods:
+            for attempt in range(1, max_attempts+1):
+                try:
+                    output_func(f"Trying {method_name} install (attempt {attempt}) for {tool_bin}...")
+                    result = subprocess.run(cmd, capture_output=True)
+                    if result.returncode == 0:
+                        output_func(f"✅ {tool_bin} installed successfully with {method_name}.")
+                        installed = True
+                        break
+                    else:
+                        output_func(f"❌ {method_name} install failed: {result.stderr.decode(errors='ignore')}")
+                except Exception as e:
+                    output_func(f"❌ {method_name} install exception: {e}")
+                attempts += 1
+                if attempts >= max_attempts:
+                    break
+            if installed:
+                break
+
+        if not installed:
+            output_func(f"⚠️ Automatic installation of {tool_bin} failed after {attempts} attempts. Please install it manually.")
+            webbrowser.open(f"https://www.google.com/search?q=install+{tool_bin}+tool")
+            return "manual"
+        return "installed"
+
+# This is the main UI class for the ReconCraft application
 class ReconCraftUI(QMainWindow):
+    
+    # 
     def __init__(self):
         super().__init__()
+
         self.setWindowTitle("ReconCraft GUI")
         self.setGeometry(450, 100, 1000, 900)
 
-
-        #DEFAULT THEME DARK
+        # DEFAULT THEME DARK
         self.theme_mode = "dark"
         self.set_dark_theme()
 
         # Set the custom window icon
         self.setWindowIcon(QIcon("assets/reconcraft_icon.png"))
-                
+
+        self.tool_container_layout = QVBoxLayout()
+        self.plugins = {}
+
         self.tabs = QTabWidget()
         self.setCentralWidget(self.tabs)
-        self.init_dashboard_tab()
-        self.init_scan_tab()
-        self.init_reports_tab()
-        self.init_settings_tab()
-        self.init_cvss_tab()
+        self.init_dashboard_tab()           # call to initialize the dashboard tab
+        self.init_scan_tab()                # call to initialize the scan tab
+        self.init_settings_tab()            # call to initialize the settings tab    
+        self.init_reports_tab()             # call to initialize the reports tab
+        self.init_cvss_tab()                # call to initialize the CVSS Calculator tab
 
+        self.refresh_plugins()  # Refreshing plugins on startup
+  
+
+
+# Initialize the CVSS Calculator tab
     def init_cvss_tab(self):
         self.cvss_tab = CVSSCalcTab()
         self.tabs.addTab(self.cvss_tab, QIcon("assets/cvss_icon.png"), "")
@@ -43,17 +100,11 @@ class ReconCraftUI(QMainWindow):
         self.tabs.setTabToolTip(index, "CVSS Calculator")
         self.tabs.setTabText(index, "CVSS Calc.")
 
-#CLEAR OUTPUT AND RESET TOOLS
+#CLEAR OUTPUT FIELD
     def clear_output(self):
         self.output_console.clear()
         self.progress_bar.setValue(0)
-        self.status_label.setText("Status: Idle")
-
-
-    def reset_tools(self):
-        for checkbox in self.tools.values():
-            checkbox.setChecked(False)
-        self.status_label.setText("Status: Select tools to run")    
+        self.status_label.setText("Status: Idle")  
 
 #ABORT SCAN
     def abort_scan(self):
@@ -66,6 +117,13 @@ class ReconCraftUI(QMainWindow):
 
 # HANDLE SCAN FINISHED
     def handle_scan_finished(self, status):
+        if status == "done_success":
+            # Green
+            self.progress_bar.setStyleSheet("QProgressBar::chunk {background-color: #28a745;}")
+        else:
+            # Red
+            self.progress_bar.setStyleSheet("QProgressBar::chunk {background-color: #dc3545;}")
+        
         self.update_status_label(status)
         self.output_console.append("📌 Scan finished.")
 
@@ -73,23 +131,70 @@ class ReconCraftUI(QMainWindow):
 #DASHBOARD TAB
     def init_dashboard_tab(self):
         
-        # Create the dashboard tab         
+        # 🌐 Create the dashboard tab
         self.dashboard_tab = QWidget()
         layout = QVBoxLayout()
 
-        # Logo/Icon (if you have a PNG)
+        # 🏠 Dashboard Header
+        layout.setContentsMargins(20, 10, 20, 10)
+        layout.setSpacing(0)  # 🔧 The gap between RECONCRAFT and logo
+
+        # 🧭 Tool Title Header
+        tool_title = QLabel("🔍 RECONCRAFT")
+        tool_title.setAlignment(Qt.AlignCenter)
+        tool_title.setStyleSheet("""
+        font-size: 26px;
+        color: #00d9ff;
+        font-weight: bold;
+        letter-spacing: 12px;
+        margin-top: 16px;
+        margin-bottom: 0px;                         
+        margin: 0px;
+        padding: 0px;
+    """)
+        tool_title.setFixedHeight(40)  # Control height tightly
+        layout.addWidget(tool_title)
+
+        # 🛰️ Tool Logo/Icon (centered)
         logo = QLabel()
         logo.setPixmap(QIcon("assets/reconcraft_icon.png").pixmap(170, 170))
         logo.setAlignment(Qt.AlignCenter)
-        logo.setStyleSheet("margin-top: 10px; margin-bottom: 20px;")
+        logo.setStyleSheet("margin-top: 4px; margin-bottom: 10px;")  # reduced
         layout.addWidget(logo)
 
+
+        # 👤 Creator credit with GitHub icon beside it
+        creator_layout = QHBoxLayout()
+
+        # Creator label
+        creator_label = QLabel("👨‍💻 Created by <b style='color:#ff0055;'>SneakyWarwolf</b>")
+        creator_label.setStyleSheet("font-size: 14px; color: #ffffff;")
+        creator_label.setTextFormat(Qt.RichText)
+        creator_label.setTextInteractionFlags(Qt.TextBrowserInteraction)
+        creator_label.setOpenExternalLinks(False)
+
+        # GitHub button
+        github_btn = QPushButton()
+        github_btn.setIcon(QIcon("assets/github_icon.png"))  # Make sure the icon is placed here
+        github_btn.setIconSize(QSize(24, 24))
+        github_btn.setCursor(Qt.PointingHandCursor)
+        github_btn.setToolTip("Visit GitHub")
+        github_btn.setStyleSheet("background: transparent; border: none; margin-left: 6px; margin-bottom: 10px; margin-top: 10px;")
+        github_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl("https://github.com/sneakywarwolf")))
+
+        # Combine in horizontal layout
+        creator_layout.addStretch()
+        creator_layout.addWidget(creator_label)
+        creator_layout.addWidget(github_btn)
+        creator_layout.addStretch()
+
+        layout.addLayout(creator_layout)
 
         # 📊 Stylized Stats Grid using QGroupBox
         stats_grid = QGridLayout()
         stats_grid.setSpacing(12)
 
-        # Initialize labels (these can be updated dynamically later)
+        # 🧮 Initialize labels (these can be updated dynamically later)
         self.total_scans_label = QLabel("5")
         self.last_target_label = QLabel("example.com")
         self.last_tools_label = QLabel("Nmap, Subfinder")
@@ -98,7 +203,7 @@ class ReconCraftUI(QMainWindow):
         self.last_report_label = QLabel("<a href='#'>demo_report_01.txt</a>")
         self.last_report_label.setOpenExternalLinks(False)
 
-        # Define the metrics with labels
+        # 📦 Define the metrics with labels
         metrics = {
             "🧮 Total Scans Run": self.total_scans_label,
             "🕵️‍♂️ Last Target": self.last_target_label,
@@ -108,7 +213,7 @@ class ReconCraftUI(QMainWindow):
             "📁 Last Report": self.last_report_label
         }
 
-        # Add each metric to the grid as a group card
+        # 🧱 Add each metric to the grid as a group card
         row, col = 0, 0
         for title, label in metrics.items():
             group = QGroupBox(title)
@@ -140,22 +245,22 @@ class ReconCraftUI(QMainWindow):
         # ✅ Add grid to layout
         layout.addLayout(stats_grid)
 
-        # Fun tip or quick link
+        # 💡 Tip or quick help
         tip = QLabel("💡 <i>Tip: Review CVSS scores for your findings in the 'CVSS Calc.' tab!</i>")
-        tip.setStyleSheet("font-size: 14px; color: #33c3f0; margin-top: 12px;")
+        tip.setStyleSheet("font-size: 14px; color: #ffaa00; margin-top: 16px;")
         tip.setAlignment(Qt.AlignCenter)
         layout.addWidget(tip)
-     
-        # Dashboard tab setup
+
+        # 📋 Finalize Dashboard layout
         self.dashboard_tab.setLayout(layout)
 
-        # 🛠️ Add tab and capture index
-        
+        # 🛠️ Add dashboard tab with icon and tooltip
         index = self.tabs.addTab(self.dashboard_tab, QIcon("assets/home_icon.png"), "")
         self.tabs.setTabToolTip(index, "🏠 Dashboard – Overview of your scans")
         self.tabs.setTabText(index, "Dashboard")  # ✅ Use the captured index
 
-#SCAN TAB
+    
+ #SCAN TAB
     def init_scan_tab(self):
 
         # This defines the actual scan tab.
@@ -163,7 +268,8 @@ class ReconCraftUI(QMainWindow):
         layout = QVBoxLayout()
         
         self.scan_tab.setLayout(layout)  # ✅ Correct: apply layout to the tab actually being used
-    
+
+
         header = QLabel("🛠 ReconCraft - Reconnaissance Interface")
         header.setAlignment(Qt.AlignCenter)
         header.setStyleSheet("font-size: 18px; font-weight: bold; color: #00d9ff;")
@@ -184,8 +290,45 @@ class ReconCraftUI(QMainWindow):
         clear_btn.setToolTip("Clear target")
         clear_btn.clicked.connect(self.target_input.clear)
 
-        target_layout.addWidget(self.target_input)
-        target_layout.addWidget(clear_btn)
+        clear_btn.setStyleSheet("""
+        QPushButton {
+            background: none;
+            border: none;
+            padding: 4px;
+        }
+        QPushButton:hover {
+            background: #222;
+            border: 1px solid #00d9ff;
+        }
+        QPushButton:pressed {
+            background: #111;
+        }
+    """)
+        target_layout.addWidget(self.target_input) #input field
+        target_layout.addWidget(clear_btn)  # clear button
+
+        # After creating self.target_input and clear_btn
+        upload_btn = QPushButton()
+        upload_btn.setIcon(QIcon("assets/upload_icon.jpg"))  # Use a suitable upload icon in your assets
+        upload_btn.setToolTip("Upload targets from a .txt file")
+        upload_btn.clicked.connect(self.upload_targets)
+
+        # Add upload_btn to the target_layout (just like clear_btn)
+        upload_btn.setStyleSheet("""
+        QPushButton {
+            background: none;
+            border: none;
+            padding: 4px;
+        }
+        QPushButton:hover {
+            background: #222;
+            border: 1px solid #00d9ff;
+        }
+        QPushButton:pressed {
+            background: #111;
+        }
+    """)
+        target_layout.addWidget(upload_btn)
 
         # Now add the target label and full horizontal layout to your main layout
         layout.addLayout(target_layout)
@@ -208,17 +351,54 @@ class ReconCraftUI(QMainWindow):
             }
         """)
 
-        tool_layout = QVBoxLayout()
-        self.tools = {
-            "Nmap": QCheckBox("Nmap"),
-            "Whois": QCheckBox("Whois"),
-            "Subfinder": QCheckBox("Subfinder")
-        }
-        
-        for tool in self.tools.values():
-            tool_layout.addWidget(tool)
-        tool_group.setLayout(tool_layout)
+        # 🔄 Clear any existing tools to avoid duplication
+        self.tools = {}
+
+        # Create a FlowLayout for the tools
+        self.tool_container_layout = FlowLayout()
+
+        # Dynamically load and render checkboxes
+        self.init_dynamic_tool_checkboxes(self.tool_container_layout)
+
+        # Set layout to tool_group and add it to the main layout
+        tool_group.setLayout(self.tool_container_layout)
         layout.addWidget(tool_group)
+
+        # --- Plugin Actions Row (Refresh Plugins + Check Tools) ---
+        plugin_action_layout = QHBoxLayout()
+
+        self.refresh_button = QPushButton("🔄 Refresh Plugins")
+        self.refresh_button.setToolTip("Reload plugins and update tool list")
+        self.refresh_button.clicked.connect(self.refresh_plugins)
+        plugin_action_layout.addWidget(self.refresh_button)
+
+        self.check_tools_btn = QPushButton("Check Tools")
+        self.check_tools_btn.setToolTip("Check if all loaded tools are installed")
+        self.check_tools_btn.clicked.connect(self.check_tools_installed)
+        self.check_tools_btn.setIcon(QIcon("assets/check_tools_icon.png"))
+        plugin_action_layout.addWidget(self.check_tools_btn)
+
+        plugin_action_layout.addStretch()  # Optional: pushes buttons to the left
+
+        # Add the row to the main Scan tab layout, just above Start/Abort buttons
+        layout.addLayout(plugin_action_layout)
+
+
+        #SIZE for Refresh, Check Tools buttons
+        self.refresh_button.setFixedHeight(40)
+        self.refresh_button.setFixedWidth(500)
+
+        self.check_tools_btn.setFixedHeight(40)
+        self.check_tools_btn.setFixedWidth(500)
+
+        # Install Missing Tools Button
+        install_tools_layout = QHBoxLayout()
+        self.install_tools_btn = QPushButton("Install Missing Tools")
+        self.install_tools_btn.setToolTip("Try to install all missing tools automatically")
+        self.install_tools_btn.setIcon(QIcon("assets/install_icon.png"))   # <-- Add your icon here
+        self.install_tools_btn.clicked.connect(self.install_missing_tools)
+        install_tools_layout.addWidget(self.install_tools_btn)
+        layout.addLayout(install_tools_layout)
 
         #ADDING START & ABORT BUTTON
         # Start Scan Button
@@ -230,10 +410,16 @@ class ReconCraftUI(QMainWindow):
         self.abort_button.setEnabled(False)
         self.abort_button.clicked.connect(self.abort_scan)
 
-        # Horizontal layout for both buttons
+        # Set START and ABORT button sizes
+        self.start_button.setFixedHeight(40)
+        self.start_button.setFixedWidth(500)
+        self.abort_button.setFixedHeight(40)
+        self.abort_button.setFixedWidth(500)
+
+        # Create horizontal layout for both buttons
         button_layout = QHBoxLayout()
-        button_layout.addWidget(self.start_button)
-        button_layout.addWidget(self.abort_button)
+        button_layout.addWidget(self.start_button)   # <-- add Start Scan
+        button_layout.addWidget(self.abort_button)   # <-- add Abort Scan
 
         # Add this button layout to the main layout
         layout.addLayout(button_layout)
@@ -283,19 +469,138 @@ class ReconCraftUI(QMainWindow):
         scan_index=self.tabs.addTab(self.scan_tab, QIcon("assets/scan.png"), "")
         self.tabs.setTabToolTip(scan_index, "🔍 Scan – Start recon with selected tools")
         self.tabs.setTabText(scan_index, "Scan")
-        
+
+ #CHECK IF TOOLS ARE INSTALLED   
+    def check_tools_installed(self):
+        output_lines = []
+        missing_tools = []
+
+        for plugin_name, plugin_module in self.plugins.items():
+            # Check if the plugin has a REQUIRED_TOOL attribute
+            tool_bin = getattr(plugin_module, "REQUIRED_TOOL", plugin_name)
+            if not shutil.which(tool_bin):
+                output_lines.append(f"❌ {plugin_name} (requires `{tool_bin}`) is NOT installed.")
+                missing_tools.append(plugin_name)
+            else:
+                output_lines.append(f"✅ {plugin_name} (requires `{tool_bin}`) is installed.")
+
+        if missing_tools:
+            output_lines.append("\n⚠️ Missing: " + ", ".join(missing_tools))
+        else:
+            output_lines.append("\n🎉 All dynamically loaded tools are installed!")
+
+        self.output_console.append("\n".join(output_lines))
+
+    
+
+    # Install missing tools
+    def install_missing_tools(self):
+        missing_tools = []
+        for plugin_name, plugin_module in self.plugins.items():
+            tool_bin = getattr(plugin_module, "REQUIRED_TOOL", plugin_name)
+            if not shutil.which(tool_bin):
+                missing_tools.append((plugin_name, tool_bin))
+        if not missing_tools:
+            self.output_console.append("🎉 All tools are already installed!")
+            return
+        for plugin_name, tool_bin in missing_tools:
+            self.output_console.append(f"🔽 Trying to install {plugin_name} ({tool_bin}) ...")
+            result = try_install_tool(tool_bin, self.output_console.append, max_attempts=2)
+            self.output_console.append(f"Result: {result}")
+        self.output_console.append("⬆️ Installation attempts finished. Please re-run 'Check Tools' to confirm.")
+
+
+
+#Upload targets from file
+    def upload_targets(self):
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Open Target List", "", "Text Files (*.txt);;All Files (*)"
+        )
+        if file_path:
+            try:
+                with open(file_path, 'r') as f:
+                    lines = [line.strip() for line in f if line.strip()]
+                if not lines:
+                    self.output_console.append("❌ The uploaded file is empty.")
+                    return
+                # Replace the input field contents with the uploaded list (comma-separated for your UI)
+                self.target_input.setText(", ".join(lines))
+                self.output_console.append(f"✅ Imported {len(lines)} targets from file.")
+            except Exception as e:
+                self.output_console.append(f"❌ Failed to import targets: {str(e)}")
+
+
+
+# DYNAMICALLY POPULATE TOOL CHECKBOXES
+    def init_dynamic_tool_checkboxes(self, tool_container_layout):
+        """
+        Dynamically populate tool checkboxes into a layout based on available tools.
+        This should be called after ScanThread has initialized plugins.
+        """
+        dummy_thread = ScanThread([], [], "")  # Only used for tool discovery
+        all_tools = dummy_thread.get_all_tools()
+
+        self.tool_checkboxes = {}  # Store for retrieval
+
+        for tool in all_tools:
+            checkbox = QCheckBox(tool)
+            checkbox.setStyleSheet("color: #fff; font-size: 14px; margin: 4px;")
+            tool_container_layout.addWidget(checkbox)
+            self.tool_checkboxes[tool] = checkbox
+
+# Get selected tools from checkboxes 
+    def get_selected_tools(self):
+        """
+        Returns a list of tool names (as in self.tool_checkboxes)
+        that are currently selected by the user.
+        """
+        return [name for name, checkbox in self.tool_checkboxes.items() if checkbox.isChecked()]
+
+
 #RESET TOOLS
     def reset_tools(self):
         # Uncheck all tool checkboxes
-        for checkbox in self.tools.values():
+        for checkbox in self.tool_checkboxes.values():
             checkbox.setChecked(False)
 
         # Clear the target input field
         self.target_input.clear()
   
+#REFRESH PLUGINS
+
+    def refresh_plugins(self):
+        
+        # Remove all existing checkboxes from layout
+        for i in reversed(range(self.tool_container_layout.count())):
+            widget = self.tool_container_layout.itemAt(i).widget()
+            if widget:
+                self.tool_container_layout.removeWidget(widget)
+                widget.setParent(None)
+
+        # --- LOAD PLUGINS DYNAMICALLY ---
+        plugins_dir = os.path.join(os.getcwd(), "plugins")
+        self.plugins = {}  # <--- ADD THIS: plugin name => plugin module
+
+        for filename in os.listdir(plugins_dir):
+            if filename.endswith(".py") and not filename.startswith("__"):
+                plugin_name = filename[:-3]  # remove .py
+                plugin_path = os.path.join(plugins_dir, filename)
+                spec = importlib.util.spec_from_file_location(plugin_name, plugin_path)
+                plugin_module = importlib.util.module_from_spec(spec)
+                try:
+                    spec.loader.exec_module(plugin_module)
+                    self.plugins[plugin_name] = plugin_module
+                except Exception as e:
+                    self.output_console.append(f"❌ Failed to load {plugin_name}: {e}")
+
+        # Reload tool checkboxes
+        self.init_dynamic_tool_checkboxes(self.tool_container_layout)
+        self.output_console.append("🔁 Plugins refreshed successfully.\n")
+
 
 # FOR STARTING & LAUNCHING SCAN
     def launch_scan(self):
+        self.abort_button.setEnabled(True)
         targets_input = self.target_input.text().strip()
         if not targets_input:
             self.output_console.append("❌ Please enter at least one target.")
@@ -307,10 +612,8 @@ class ReconCraftUI(QMainWindow):
             self.output_console.append("❌ Invalid target format.")
             return
 
-        selected_plugins = [
-            name.lower() for name, checkbox in self.tools.items()
-            if checkbox.isChecked()
-        ]
+        ## Get selected tools
+        selected_plugins = self.get_selected_tools()
 
         if not selected_plugins:
             self.output_console.append("❌ Please select at least one tool.")
@@ -360,7 +663,7 @@ class ReconCraftUI(QMainWindow):
                     color: #ffffff;
                 }
                 QProgressBar::chunk {
-                    background-color: #cccc00;
+                    background-color: #00d9ff;  /* Blue for scan start */
                 }
             """)
         elif status == "done_success":
@@ -395,7 +698,6 @@ class ReconCraftUI(QMainWindow):
             self.status_label.setText(status)
 
 
-
 #DASHBOARD UPDATE
     def update_dashboard(self, target, plugins):
         self.total_scans_label.setText("Total Scans Run: updated dynamically")
@@ -405,32 +707,168 @@ class ReconCraftUI(QMainWindow):
         self.last_time_label.setText(f"Last Scan Time: {now}")
         self.last_status_label.setText("Scan Status: ✅ Successful")
 
+# Display last report link
+    def display_report(self, item):
+        file_path = item.data(Qt.UserRole)
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                content = f.read()
+                self.report_viewer.setPlainText(content)
+        except Exception as e:
+            self.report_viewer.setPlainText(f"⚠️ Failed to load report:\n{str(e)}")
+
+# Method to populate QTreeWidget
+    def load_report_tree(self):
+        from pathlib import Path
+
+        self.report_tree.clear()
+        base_dir = Path("Scan Results")
+        if not base_dir.exists():
+            return
+
+        def add_items_recursively(parent, path):
+            for item in path.iterdir():
+                child = QTreeWidgetItem([item.name])
+                child.setData(0, Qt.UserRole, str(item))
+                parent.addChild(child)
+                if item.is_dir():
+                    add_items_recursively(child, item)
+
+        for folder in base_dir.iterdir():
+            if folder.is_dir():
+                root = QTreeWidgetItem([folder.name])
+                root.setData(0, Qt.UserRole, str(folder))
+                self.report_tree.addTopLevelItem(root)
+                add_items_recursively(root, folder)
+
+
+# Handler for clicking file
+    def display_report_from_tree(self, item, column):
+        file_path = item.data(0, Qt.UserRole)
+        if Path(file_path).is_file():
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                    self.report_viewer.setPlainText(content)
+            except Exception as e:
+                self.report_viewer.setPlainText(f"Error loading file:\n{e}")
+
+#LOAD REPORT FILES
+    def load_report_files(self):
+        """
+        Loads all readable reports from 'Scan Results/' and populates the QListWidget.
+        """
+        scan_results_dir = os.path.join(os.getcwd(), "Scan Results")
+
+        if not os.path.exists(scan_results_dir):
+            self.report_list.addItem("⚠️ 'Scan Results' folder not found.")
+            self.report_list.setEnabled(False)
+            return
+
+        # Add the refresh button to the report tab layout
+        self.refresh_button = QPushButton()
+        self.refresh_button.setIcon(QIcon("assets/refresh.png"))
+        self.refresh_button.setFixedSize(32, 32)
+        self.refresh_button.clicked.connect(self.load_report_files)
+
+        
+        self.report_list.clear()
+
+        for root, dirs, files in os.walk(scan_results_dir):
+            for file in files:
+                if file.endswith((".txt", ".log", ".html")):
+                    full_path = os.path.join(root, file)
+                    display_name = os.path.relpath(full_path, scan_results_dir)
+                    
+                    item = QListWidgetItem(display_name)
+                    item.setToolTip(full_path)
+                    item.setData(Qt.UserRole, full_path)
+                    self.report_list.addItem(item)
+
+        if self.report_list.count() == 0:
+            self.report_list.addItem("ℹ️ No reports found in 'Scan Results'.")
+            self.report_list.setEnabled(False)
+        else:
+            self.report_list.setEnabled(True)
 
 
 #THIS IS FOR REPORT TAB
     def init_reports_tab(self):
         
-        # This defines the actual reports tab.
+        # This defines the actual report tab.
+        
         self.report_tab = QWidget()
-        layout = QVBoxLayout()
+        layout = QVBoxLayout(self.report_tab)
 
-        header = QLabel("📁 Reports")
-        header.setAlignment(Qt.AlignCenter)
-        header.setStyleSheet("font-size: 16px; color: #00d9ff; font-weight: bold; margin-bottom: 10px;")
-        layout.addWidget(header)
+        # Title bar with refresh
+        title = QLabel("📁 Reports")
+        title.setAlignment(Qt.AlignLeft)
+        title.setStyleSheet("font-size: 18px; color: #00d9ff; font-weight: bold; margin-bottom: 6px;")
 
-        self.report_list = QListWidget()
-        self.report_list.addItem("demo_report_01.txt")
-        self.report_list.addItem("demo_report_02.txt")
-        layout.addWidget(QLabel("Available Reports:"))
-        layout.addWidget(self.report_list)
+        refresh_btn = QPushButton()
+        refresh_btn.setIcon(QIcon("assets/refresh_icon.png"))
+        refresh_btn.setToolTip("Refresh Report List")
+        refresh_btn.setFixedSize(32, 32)
+        refresh_btn.setStyleSheet("border: none;")
 
-        #Attaching it to the layout
-        self.report_tab.setLayout(layout) 
+        refresh_btn.clicked.connect(self.load_report_tree)
 
-        report_index=self.tabs.addTab(self.report_tab, QIcon("assets/report.png"), "")
+        title_layout = QHBoxLayout()
+        title_layout.addWidget(title)
+        title_layout.addStretch()
+        title_layout.addWidget(refresh_btn)
+        layout.addLayout(title_layout)
+
+        layout.addSpacing(5)
+
+        # Horizontal layout for browser + viewer
+        content_layout = QHBoxLayout()
+
+        self.report_tree = QTreeWidget()
+        self.report_tree.setHeaderLabel("Scan Reports")
+        self.report_tree.setMinimumWidth(300)
+        self.report_tree.itemClicked.connect(self.display_report_from_tree)
+        content_layout.addWidget(self.report_tree)
+        
+        # Set custom stylesheet for the report tree
+        self.report_tree.setStyleSheet("""
+            QTreeWidget {
+            background-color: #121212;
+            color: #00d9ff;
+            border: 1px solid #303030;
+            font-family: Consolas, monospace;
+        }
+
+        QHeaderView::section {
+            background-color: #1a1a1a;
+            color: #00d9ff;
+            padding: 4px;
+            font-weight: bold;
+            border: 1px solid #303030;
+        }
+
+        QTreeWidget::item:selected {
+            background-color: #1e1e1e;
+            color: #00ffcc;
+        }
+    """)
+
+
+        self.report_viewer = QTextEdit()
+        self.report_viewer.setReadOnly(True)
+        self.report_viewer.setStyleSheet("font-family: Consolas, monospace; font-size: 14px; background-color: #111; color: #00ff88;")
+        content_layout.addWidget(self.report_viewer)
+
+        layout.addLayout(content_layout)
+
+        # Important: load the tree, not list
+        self.load_report_tree()
+
+        self.report_tab.setLayout(layout)
+        report_index = self.tabs.addTab(self.report_tab, QIcon("assets/report.png"), "Reports")
         self.tabs.setTabToolTip(report_index, "📊 Reports – View generated scan reports")
-        self.tabs.setTabText(report_index, "Reports")
+
+
 
    
 #PREPARE SCAN RESULT FOLDER
