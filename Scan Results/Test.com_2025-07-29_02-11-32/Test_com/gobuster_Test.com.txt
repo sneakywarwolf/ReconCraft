@@ -1,1 +1,0 @@
-🔌 Plugin gobuster executed for Test.com

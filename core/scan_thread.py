@@ -76,34 +76,47 @@ class ScanThread(QThread):
     def run_tool_and_save(self, tool, target, target_folder):
         try:
             output = self.run_tool(tool, target)
-            file_path = os.path.join(target_folder, f"{tool}_{target}.txt")
 
+            # --- If output is a tuple (msg, error_flag) ---
+            if isinstance(output, tuple):
+                msg, had_error = output
+                if had_error:
+                    # LOG the error with ❌, DO NOT save output, DO NOT show green tick
+                    return f"❌ {tool} failed for {target}: {msg}", True
+                output = msg  # Only save file if not an error
+
+            # --- Additional safeguard for blank output ---
+            if output is None or output.strip() == "":
+                return f"❌ {tool} produced no output for {target}.", True
+
+            # --- Save the output file only if NOT an error ---
+            file_path = os.path.join(target_folder, f"{tool}_{target}.txt")
             with open(file_path, "w", encoding="utf-8") as f:
                 f.write(output)
 
-            return f"✅ {tool} finished for {target}. Output saved to: {file_path}", False  # No error
+            return f"✅ {tool} finished for {target}. Output saved to: {file_path}", False
+
         except subprocess.CalledProcessError as e:
             return f"❌ {tool} failed for {target}: {e.output}", True
         except Exception as e:
             return f"❌ {tool} crashed for {target}: {str(e)}", True
+
 
     def run_tool(self, tool, target):
         # ⚙️ Plugin-based tools only (built-in tools removed)
         if tool in self.plugin_map:
             raw_dir = os.path.join(self.report_root_folder, "raw")
             os.makedirs(raw_dir, exist_ok=True)
-            self.plugin_map[tool](
-                ip=target,
-                raw_dir=raw_dir,
-                base_dir=self.report_root_folder,
-                run_command=self.run_command,
-                check_tool_installed=self.check_tool_installed,
-                extract_cves=self.extract_cves,
+            return self.plugin_map[tool](
+                target,
+                raw_dir,
+                self.report_root_folder,
+                self.run_command,
+                self.check_tool_installed,
+                self.extract_cves,
             )
-            return f"🔌 Plugin {tool} executed for {target}"
         else:
             raise Exception(f"Tool '{tool}' is not supported.")
-
 
     # 🔧 Helper methods passed into plugins
     def run_command(self, cmd_list, outfile_name):

@@ -1,16 +1,25 @@
-"""
-DirBuster - Directory brute-force using Java GUI or CLI mode.
-"""
-REQUIRED_TOOL = "dirbuster"
+REQUIRED_TOOL = "dirbuster"   # e.g., "nmap", "gobuster", etc.
+INSTALL_HINT = "manual"         # "apt", "brew", "pip", "go", or "manual"
+INSTALL_URL = "https://www.owasp.org/index.php/Category:OWASP_DirBuster_Project"             # For manual tools (if any)
 
+def run(ip_or_domain, raw_dir, base_dir, run_command, check_tool_installed, extract_cves):
+    plugin_name = REQUIRED_TOOL
 
-def run(ip, raw_dir, base_dir, run_command, check_tool_installed, extract_cves):
-    if not check_tool_installed("dirbuster"):
-        print(f"[!] dirbuster not installed. Skipping {ip}.", True)
-        return
-    raw_file = f"{ip}_dirbuster.txt"
-    output_path = run_command([
-        "java", "-jar", "/path/to/DirBuster-*.jar",
-        "-u", f"http://{ip}",
-        "-l", "/usr/share/wordlists/dirbuster/directory-list-2.3-medium.txt"
-    ], raw_file)
+    # ✅ Step 1: Check if tool is installed
+    if not check_tool_installed(plugin_name):
+        return (f"[!] {plugin_name} not installed. Skipping {ip_or_domain}.", True)
+
+    # ✅ Step 2: Set output file path
+    raw_file = f"{ip_or_domain}_{plugin_name}.txt"
+
+    # ✅ Step 3: Run the command (customize as needed)
+    cmd = ['echo', 'DirBuster not implemented.']
+    output_path = run_command(cmd, raw_file)
+
+    # ✅ Step 4: Optionally extract CVEs
+    # extract_cves(output_path, ip_or_domain)  ← Optional
+
+    # ✅ Step 5: Read and return the output as a tuple (output, False)
+    with open(output_path, "r", encoding="utf-8") as f:
+        output = f.read()
+    return (output, False)
