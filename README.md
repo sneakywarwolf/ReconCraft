@@ -101,7 +101,7 @@ ReconCraft/
 
 | Reports | Themes to Switch |
 | ------------------------- | ------------------------- |
-| <img src="assets/Screenshots/report-1.png" width="400"> | <img src="assets/Screenshots/themes.png" width="400">
+| <img src="assets/Screenshots/report-1.png" width="400"> | <img src="assets/Screenshots/Themes.png" width="400">
 
 ---
 
