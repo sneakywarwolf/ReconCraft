@@ -1,3 +1,8 @@
+# ReconCraft by Nirmal Chakraborty
+# Copyright (c) 2025. All rights reserved.
+# See LICENSE for details.
+
+
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QGroupBox, QGridLayout, QTextEdit, QListWidget, QListWidgetItem, QApplication
@@ -6,6 +11,7 @@ from PyQt5.QtCore import Qt, QTimer, QSize
 from PyQt5.QtGui import QIcon
 from datetime import datetime
 from cvss import CVSS3
+from gui.common_widgets import get_copyright_label
 
 class CVSSCalcTab(QWidget):
     def __init__(self):
@@ -15,18 +21,31 @@ class CVSSCalcTab(QWidget):
         # Heading section
         heading_layout = QHBoxLayout()
         heading_icon = QLabel()
-        heading_icon.setPixmap(QIcon("assets/cvss_icon.jpg").pixmap(130, 100))
-        heading_icon.setStyleSheet("margin-right: 8px;")
+        main_layout.addSpacing(25)
+        
+        heading_icon.setPixmap(QIcon("assets/cvss_icon.jpg").pixmap(350, 180))
+        heading_icon.setStyleSheet("margin-right: 10px;")
 
         heading_text = QLabel("<b>CVSS v3.1 Calculator</b>")
-        heading_text.setStyleSheet("font-size: 18px; text-align: center;")
+        heading_text.setStyleSheet("font-size: 18px; text-align: left;")   
+        
+        # Copyright label (already styled as you want)
+        copyright_label = get_copyright_label()
 
-        heading_layout.addStretch()
-        heading_layout.addWidget(heading_icon)
-        heading_layout.addWidget(heading_text)
-        heading_layout.addStretch()
+        # Stack title + copyright
+        title_box = QVBoxLayout()
+        title_box.addWidget(heading_text)
+        title_box.addWidget(copyright_label, alignment=Qt.AlignLeft)
 
-        main_layout.addLayout(heading_layout)
+        # Put icon and title_box side by side
+        heading_row = QHBoxLayout()
+        heading_row.addStretch()
+        heading_row.addWidget(heading_icon, alignment=Qt.AlignVCenter)
+        heading_row.addLayout(title_box)
+        heading_row.addStretch()
+
+        main_layout.addLayout(heading_row)
+
         grid_layout = QGridLayout()
         self.vector = {
             'AV': None, 'AC': None, 'PR': None, 'UI': None,
@@ -96,9 +115,7 @@ class CVSSCalcTab(QWidget):
         self.copied_label.hide()
         result_layout.addWidget(self.copied_label, alignment=Qt.AlignRight)
 
-        main_layout.addLayout(result_layout)
-
-        
+        main_layout.addLayout(result_layout)       
         self.setLayout(main_layout)
 
     def create_metric_group(self, metric):
@@ -167,7 +184,7 @@ class CVSSCalcTab(QWidget):
                 'H': 'Worst: [Add description for High]'
             }
         }
-
+        
         for name, code in self.metric_definitions[metric]:
             # styling of icons for vectors
             icon_path = f"assets/icons/{metric}_{code}.png" if metric and code else None
@@ -203,6 +220,9 @@ class CVSSCalcTab(QWidget):
         self.metric_buttons[metric] = buttons
         group.setLayout(layout)
         return group
+
+        
+    
 
     def update_metric(self, metric, code):
         self.vector[metric] = code

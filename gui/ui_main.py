@@ -1,3 +1,8 @@
+# ReconCraft by Nirmal Chakraborty
+# Copyright (c) 2025. All rights reserved.
+# See LICENSE for details.
+
+
 
 from PyQt5.QtWidgets import (
     QMainWindow, QWidget, QTabWidget, QVBoxLayout,
@@ -11,64 +16,29 @@ import datetime, os, sys
 from datetime import datetime
 from PyQt5.QtGui import QIcon, QDesktopServices
 from core.cvss_calc import CVSSCalcTab
-import re, shutil, subprocess, platform, webbrowser
+import re, shutil, subprocess, platform, webbrowser, csv
+try:
+    import pandas as pd
+except ImportError:
+    pd = None
 from pathlib import Path
 from gui.flow_layout import FlowLayout
 import importlib.util
-
-#GLOBAL FUNCTION TO INSTALL TOOLS
-def try_install_tool(tool_bin, output_func, max_attempts=2):
-        system = platform.system().lower()
-        attempts = 0
-        installed = False
-        methods = []
-
-        # Define all install methods you want to try in order
-        if system == "linux" and shutil.which("apt"):
-            methods.append(("apt", ["sudo", "apt", "install", "-y", tool_bin]))
-        if system == "darwin" and shutil.which("brew"):
-            methods.append(("brew", ["brew", "install", tool_bin]))
-        if system == "windows" and shutil.which("choco"):
-            methods.append(("choco", ["choco", "install", tool_bin, "-y"]))
-        methods.append(("pip", [sys.executable, "-m", "pip", "install", tool_bin]))
-        if shutil.which("go"):
-            go_path = f"github.com/projectdiscovery/{tool_bin}/cmd/{tool_bin}@latest"
-            methods.append(("go", ["go", "install", go_path]))
-
-        for method_name, cmd in methods:
-            for attempt in range(1, max_attempts+1):
-                try:
-                    output_func(f"Trying {method_name} install (attempt {attempt}) for {tool_bin}...")
-                    result = subprocess.run(cmd, capture_output=True)
-                    if result.returncode == 0:
-                        output_func(f"✅ {tool_bin} installed successfully with {method_name}.")
-                        installed = True
-                        break
-                    else:
-                        output_func(f"❌ {method_name} install failed: {result.stderr.decode(errors='ignore')}")
-                except Exception as e:
-                    output_func(f"❌ {method_name} install exception: {e}")
-                attempts += 1
-                if attempts >= max_attempts:
-                    break
-            if installed:
-                break
-
-        if not installed:
-            output_func(f"⚠️ Automatic installation of {tool_bin} failed after {attempts} attempts. Please install it manually.")
-            webbrowser.open(f"https://www.google.com/search?q=install+{tool_bin}+tool")
-            return "manual"
-        return "installed"
+from core.tools_utils import is_tool_installed
+from gui.settings_profiles_tab import ScanProfileSettingsTab
+from gui.common_widgets import try_install_tool, load_plugins, get_copyright_label
+from gui.tool_worker import ToolCheckWorker, ToolInstallWorker
 
 # This is the main UI class for the ReconCraft application
 class ReconCraftUI(QMainWindow):
     
-    # 
     def __init__(self):
         super().__init__()
 
         self.setWindowTitle("ReconCraft GUI")
-        self.setGeometry(450, 100, 1000, 900)
+        self.setGeometry(450, 100, 1000, 900)   
+
+        self.plugin_map = load_plugins()  # load plugins here
 
         # DEFAULT THEME DARK
         self.theme_mode = "dark"
@@ -84,13 +54,13 @@ class ReconCraftUI(QMainWindow):
         self.setCentralWidget(self.tabs)
         self.init_dashboard_tab()           # call to initialize the dashboard tab
         self.init_scan_tab()                # call to initialize the scan tab
-        self.init_settings_tab()            # call to initialize the settings tab    
+        #self.init_settings_tab()            
+        self.init_settings_tab(self.plugin_map)   # call to initialize the settings tab   
         self.init_reports_tab()             # call to initialize the reports tab
         self.init_cvss_tab()                # call to initialize the CVSS Calculator tab
 
         self.refresh_plugins()  # Refreshing plugins on startup
   
-
 
 # Initialize the CVSS Calculator tab
     def init_cvss_tab(self):
@@ -108,12 +78,24 @@ class ReconCraftUI(QMainWindow):
 
 #ABORT SCAN
     def abort_scan(self):
+        # Cancel install if running
+        if hasattr(self, 'installer_worker') and self.installer_worker.isRunning():
+            try:
+                self.installer_worker.cancel()
+                self.output_console.append("⏹️ Installation cancel requested.")
+            except Exception:
+                pass
+
+        # Existing scan abort logic
         if hasattr(self, 'scan_thread') and self.scan_thread.isRunning():
-            self.scan_thread.terminate()  # Force kill (not recommended for long-term)
+            self.scan_thread.terminate()  # you already had this
             self.output_console.append("⚠️ Scan aborted by user.")
-            self.abort_button.setEnabled(False)
-            self.progress_bar.setValue(0)
-            self.status_label.setText("Scan aborted.")
+
+        # Reset UI state
+        self.abort_button.setEnabled(False)
+        self.progress_bar.setValue(0)
+        self.status_label.setText("Idle")
+
 
 # HANDLE SCAN FINISHED
     def handle_scan_finished(self, status):
@@ -157,7 +139,7 @@ class ReconCraftUI(QMainWindow):
 
         # 🛰️ Tool Logo/Icon (centered)
         logo = QLabel()
-        logo.setPixmap(QIcon("assets/reconcraft_icon.png").pixmap(170, 170))
+        logo.setPixmap(QIcon("assets/reconcraft_icon.png").pixmap(570, 170))
         logo.setAlignment(Qt.AlignCenter)
         logo.setStyleSheet("margin-top: 4px; margin-bottom: 10px;")  # reduced
         layout.addWidget(logo)
@@ -181,6 +163,7 @@ class ReconCraftUI(QMainWindow):
         github_btn.setToolTip("Visit GitHub")
         github_btn.setStyleSheet("background: transparent; border: none; margin-left: 6px; margin-bottom: 10px; margin-top: 10px;")
         github_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl("https://github.com/sneakywarwolf")))
+
 
         # Combine in horizontal layout
         creator_layout.addStretch()
@@ -262,6 +245,7 @@ class ReconCraftUI(QMainWindow):
     
  #SCAN TAB
     def init_scan_tab(self):
+      
 
         # This defines the actual scan tab.
         self.scan_tab = QWidget()  
@@ -274,6 +258,7 @@ class ReconCraftUI(QMainWindow):
         header.setAlignment(Qt.AlignCenter)
         header.setStyleSheet("font-size: 18px; font-weight: bold; color: #00d9ff;")
         layout.addWidget(header)
+        layout.addWidget(get_copyright_label())
 
         layout.addWidget(QLabel("Target(s):"))
 
@@ -406,7 +391,7 @@ class ReconCraftUI(QMainWindow):
         self.start_button.clicked.connect(self.launch_scan)
 
         # Abort Scan Button
-        self.abort_button = QPushButton("⛔ Abort Scan")
+        self.abort_button = QPushButton("⛔ Abort Scan/Cancel Install")
         self.abort_button.setEnabled(False)
         self.abort_button.clicked.connect(self.abort_scan)
 
@@ -425,8 +410,22 @@ class ReconCraftUI(QMainWindow):
         layout.addLayout(button_layout)
 
 
+        self.check_result_label = QLabel("")
+        self.check_result_label.setAlignment(Qt.AlignCenter)
+        self.check_result_label.setStyleSheet("font-size: 13px; font-weight: bold; color: #ff5555;")
+        layout.addWidget(self.check_result_label)
+
+        #Progress Bar, Status Label, and Output Console
         self.progress_bar = QProgressBar()
+        self.progress_bar.setAlignment(Qt.AlignCenter)
         self.progress_bar.setValue(0)
+        
+        # Force bold font!
+        font = self.progress_bar.font()
+        font.setBold(True)
+        font.setPointSize(9)  # Or any size you prefer
+        self.progress_bar.setFont(font)
+        
         self.progress_bar.setVisible(True)
         layout.addWidget(self.progress_bar)
 
@@ -472,66 +471,144 @@ class ReconCraftUI(QMainWindow):
 
  #CHECK IF TOOLS ARE INSTALLED   
     def check_tools_installed(self):
-        output_lines = []
-        missing_tools = []
+        
+        self.progress_bar.setStyleSheet("QProgressBar::chunk { background: #00bfff; }")
+        self.check_result_label.setText("")  # (optional) clears old label
 
-        for plugin_name, plugin_module in self.plugins.items():
-            # Check if the plugin has a REQUIRED_TOOL attribute
-            tool_bin = getattr(plugin_module, "REQUIRED_TOOL", plugin_name)
-            if not shutil.which(tool_bin):
-                output_lines.append(f"❌ {plugin_name} (requires `{tool_bin}`) is NOT installed.")
-                missing_tools.append(plugin_name)
-            else:
-                output_lines.append(f"✅ {plugin_name} (requires `{tool_bin}`) is installed.")
+        
+        self.output_console.clear()
+        self.progress_bar.setValue(0)
+        self.statusBar().showMessage("Starting tool check...")
 
-        if missing_tools:
-            output_lines.append("\n⚠️ Missing: " + ", ".join(missing_tools))
-        else:
-            output_lines.append("\n🎉 All dynamically loaded tools are installed!")
-
-        self.output_console.append("\n".join(output_lines))
+        self.check_worker = ToolCheckWorker(self.plugins, is_tool_installed)
+        self.check_worker.progress.connect(self.progress_bar.setValue)
+        self.check_worker.status.connect(self.statusBar().showMessage)
+        self.check_worker.output.connect(self.output_console.append)
+        self.check_worker.finished.connect(self._on_check_tools_finished)
+        self.check_worker.start()
 
     
-
-    # Install missing tools
+    # Installing missing tools    
     def install_missing_tools(self):
-        missing_tools = []
-        for plugin_name, plugin_module in self.plugins.items():
-            tool_bin = getattr(plugin_module, "REQUIRED_TOOL", plugin_name)
-            if not shutil.which(tool_bin):
-                missing_tools.append((plugin_name, tool_bin))
-        if not missing_tools:
-            self.output_console.append("🎉 All tools are already installed!")
+        if not hasattr(self, "missing_tools") or not self.missing_tools:
+            self.statusBar().showMessage("No missing tools found. Please run check tools first.")
             return
-        for plugin_name, tool_bin in missing_tools:
-            self.output_console.append(f"🔽 Trying to install {plugin_name} ({tool_bin}) ...")
-            result = try_install_tool(tool_bin, self.output_console.append, max_attempts=2)
-            self.output_console.append(f"Result: {result}")
-        self.output_console.append("⬆️ Installation attempts finished. Please re-run 'Check Tools' to confirm.")
 
+        # ✅ Clear console & reset progress
+        self.output_console.clear()
+        self.progress_bar.setValue(0)
+        self.statusBar().showMessage("🔧 Starting installation of missing tools...")
 
+        # ✅ Create ToolInstallWorker with updated plugin logic
+        self.installer_worker = ToolInstallWorker(
+            self.missing_tools,
+            self.plugins,
+            try_install_tool  # This should be your core installation function
+        )
 
-#Upload targets from file
+        # ✅ Connect signals for real-time feedback
+        self.installer_worker.output.connect(self.output_console.append)
+        self.installer_worker.status.connect(self.statusBar().showMessage)
+        self.installer_worker.progress.connect(self.progress_bar.setValue)
+        self.installer_worker.finished.connect(self._on_install_tools_finished)
+
+        # ✅ Start the worker thread
+        self.installer_worker.start()
+
+    # This method is called when the ToolInstallWorker finishes installing tools
+    # It updates the status bar and clears the missing tools list
+    def _on_install_tools_finished(self, *args):
+        self.statusBar().showMessage("✅ Tool installation completed.")
+        self.output_console.append("✅ All missing tools (if any) have been handled.")   
+
+       
+    # This method is called when the ToolCheckWorker finishes checking tools
+    def _on_check_tools_finished(self, missing_tools):
+        self.missing_tools = missing_tools
+        if missing_tools:
+            self.check_result_label.setText("Some tools missing.")
+            self.check_result_label.setStyleSheet("font-size: 13px; font-weight: bold; color: #ff5555;")  # red
+            self.progress_bar.setStyleSheet("QProgressBar::chunk { background: #ff5555; }")  # red bar
+            
+        else:
+            self.check_result_label.setText("All tools are installed.")
+            self.check_result_label.setStyleSheet("font-size: 13px; font-weight: bold; color: #55ff55;")  # green
+            self.progress_bar.setStyleSheet("QProgressBar::chunk { background: #55ff55; }")  # green bar
+            
+#UPLOAD TARGETS FROM FILE
     def upload_targets(self):
+    
+        allowed_pattern = re.compile(r'^[a-zA-Z0-9\-._:,]+$')
+
         file_path, _ = QFileDialog.getOpenFileName(
-            self, "Open Target List", "", "Text Files (*.txt);;All Files (*)"
+            self,
+            "Open Target List",
+            "",
+            "Target Files (*.txt *.csv *.xlsx);;Text Files (*.txt);;CSV Files (*.csv);;Excel Files (*.xlsx);;All Files (*)"
         )
         if file_path:
+            _, ext = os.path.splitext(file_path)
+            lines = []
             try:
-                with open(file_path, 'r') as f:
-                    lines = [line.strip() for line in f if line.strip()]
+                if ext.lower() == ".txt":
+                    with open(file_path, 'r') as f:
+                        lines = [line.strip() for line in f if line.strip()]
+                elif ext.lower() == ".csv":
+                    with open(file_path, 'r', newline='') as csvfile:
+                        reader = csv.reader(csvfile)
+                        for row in reader:
+                            for item in row:
+                                item = item.strip()
+                                if item:
+                                    lines.append(item)
+                elif ext.lower() == ".xlsx":
+                    if pd is None:
+                        self.output_console.append("❌ 'pandas' library is required to read Excel files. Please install it.")
+                        return
+                    try:
+                        df = pd.read_excel(file_path, header=None)
+                    except Exception as ex:
+                        self.output_console.append(f"❌ Error reading Excel file: {str(ex)}")
+                        return
+                    for value in df.values.flatten():
+                        if pd.isna(value):
+                            continue
+                        value = str(value).strip()
+                        if value:
+                            lines.append(value)
+                else:
+                    self.output_console.append("❌ Unsupported file type.")
+                    return
+
                 if not lines:
                     self.output_console.append("❌ The uploaded file is empty.")
                     return
-                # Replace the input field contents with the uploaded list (comma-separated for your UI)
-                self.target_input.setText(", ".join(lines))
-                self.output_console.append(f"✅ Imported {len(lines)} targets from file.")
+
+                valid_lines = []
+                invalid_lines = []
+                for line in lines:
+                    if allowed_pattern.match(line):
+                        valid_lines.append(line)
+                    else:
+                        invalid_lines.append(line)
+
+                if not valid_lines:
+                    self.output_console.append("❌ No valid targets found (special characters detected).")
+                    return
+
+                self.target_input.setText(", ".join(valid_lines))
+                self.output_console.append(f"✅ Imported {len(valid_lines)} valid targets from file.")
+
+                if invalid_lines:
+                    self.output_console.append(f"⚠️ Ignored {len(invalid_lines)} invalid lines due to special characters:")
+                    for invalid in invalid_lines:
+                        self.output_console.append(f"   - {invalid}")
+
             except Exception as e:
                 self.output_console.append(f"❌ Failed to import targets: {str(e)}")
 
 
-
-# DYNAMICALLY POPULATE TOOL CHECKBOXES
+# DYNAMICALLY POPULATE TOOL/PLUGIN CHECKBOXES
     def init_dynamic_tool_checkboxes(self, tool_container_layout):
         """
         Dynamically populate tool checkboxes into a layout based on available tools.
@@ -629,8 +706,17 @@ class ReconCraftUI(QMainWindow):
         self.output_console.append(f"🚀 Starting scan on {len(targets)} target(s)...")
         self.output_console.append(f"📂 Scan folder created: {scan_folder}")
 
-        # ✅ Start scan thread with multiple targets
-        self.scan_thread = ScanThread(targets, selected_plugins, scan_folder)
+        # 🔁 Reset status and progress bar for new scan
+        self.status_label.setText("Status: ⏳ Scan in progress...")
+        self.progress_bar.setValue(0)
+        
+        # ✅ Get selected scan mode from settings tab
+        selected_mode = self.scan_profiles_widget.current_mode
+
+
+        # ✅ Passing it to ScanThread, STARTING SCAN
+        self.scan_thread = ScanThread(targets, selected_plugins, scan_folder, selected_mode)
+
         self.scan_thread.log_signal.connect(self.output_console.append)
         self.scan_thread.progress_signal.connect(self.progress_bar.setValue)
         self.scan_thread.status_signal.connect(self.update_status_label)
@@ -652,50 +738,56 @@ class ReconCraftUI(QMainWindow):
 
 # UPDATE STATUS LABEL
     def update_status_label(self, status):
-        if status == "indeterminate":
-            self.status_label.setText("Status: Initializing...")
-            self.progress_bar.setStyleSheet("""
-                QProgressBar {
-                    border: 1px solid #444;
-                    border-radius: 5px;
-                    text-align: center;
-                    background-color: #111;
-                    color: #ffffff;
-                }
-                QProgressBar::chunk {
-                    background-color: #00d9ff;  /* Blue for scan start */
-                }
-            """)
-        elif status == "done_success":
-            self.status_label.setText("Status: ✅ Scan completed successfully.")
-            self.progress_bar.setStyleSheet("""
-                QProgressBar {
-                    border: 1px solid #444;
-                    border-radius: 5px;
-                    text-align: center;
-                    background-color: #111;
-                    color: #ffffff;
-                }
-                QProgressBar::chunk {
-                    background-color: #00c853;
-                }
-            """)
-        elif status == "done_error":
-            self.status_label.setText("Status: ❌ Scan completed with some errors.")
-            self.progress_bar.setStyleSheet("""
-                QProgressBar {
-                    border: 1px solid #444;
-                    border-radius: 5px;
-                    text-align: center;
-                    background-color: #111;
-                    color: #ffffff;
-                }
-                QProgressBar::chunk {
-                    background-color: #d32f2f;  /* Red for error */
-                }
-            """)
-        elif "Completed" in status:
-            self.status_label.setText(status)
+            if status == "indeterminate":
+                self.status_label.setText("Status: Initializing...")
+                self.progress_bar.setStyleSheet("""
+                    QProgressBar {
+                        border: 1px solid #444;
+                        border-radius: 5px;
+                        text-align: center;
+                        background-color: #111;
+                        color: #ffffff;
+                        font-weight: bold;
+                        font-size: 14px;
+                    }
+                    QProgressBar::chunk {
+                        background-color: #00d9ff;  /* Blue for scan start */
+                    }
+                """)
+            elif status == "done_success":
+                self.status_label.setText("Status: ✅ Scan completed successfully.")
+                self.progress_bar.setStyleSheet("""
+                    QProgressBar {
+                        border: 1px solid #444;
+                        border-radius: 5px;
+                        text-align: center;
+                        background-color: #111;
+                        color: #ffffff;
+                        font-weight: bold;
+                        font-size: 14px;
+                    }
+                    QProgressBar::chunk {
+                        background-color: #00c853;
+                    }
+                """)
+            elif status == "done_error":
+                self.status_label.setText("Status: ❌ Scan completed with some errors.")
+                self.progress_bar.setStyleSheet("""
+                    QProgressBar {
+                        border: 1px solid #444;
+                        border-radius: 5px;
+                        text-align: center;
+                        background-color: #111;
+                        color: #ffffff;
+                        font-weight: bold;
+                        font-size: 14px;
+                    }
+                    QProgressBar::chunk {
+                        background-color: #d32f2f;  /* Red for error */
+                    }
+                """)
+            elif "Completed" in status:
+                self.status_label.setText(status)
 
 
 #DASHBOARD UPDATE
@@ -799,6 +891,7 @@ class ReconCraftUI(QMainWindow):
         
         self.report_tab = QWidget()
         layout = QVBoxLayout(self.report_tab)
+        layout.addWidget(get_copyright_label())
 
         # Title bar with refresh
         title = QLabel("📁 Reports")
@@ -889,9 +982,7 @@ class ReconCraftUI(QMainWindow):
 
 
 #SETTINGS TAB
-    def init_settings_tab(self):
-        
-        # This defines the actual settings tab.
+    def init_settings_tab(self, plugin_map):
         self.settings_tab = QWidget()
         layout = QVBoxLayout()
 
@@ -899,19 +990,19 @@ class ReconCraftUI(QMainWindow):
         header.setAlignment(Qt.AlignCenter)
         header.setStyleSheet("font-size: 16px; color: #00d9ff; font-weight: bold; margin-bottom: 10px;")
         layout.addWidget(header)
+        layout.addWidget(get_copyright_label())
 
-        layout.addWidget(QLabel("Settings coming soon..."))
+        # Pass plugin_map to ScanProfileSettingsTab
+        self.scan_profiles_widget = ScanProfileSettingsTab(plugin_map)
+        layout.addWidget(self.scan_profiles_widget)
 
         self.theme_button = QPushButton("🌙 Switch to Light Theme")
         self.theme_button.clicked.connect(self.toggle_theme)
         layout.addWidget(self.theme_button)
 
-        #Attaching it to the layout
         self.settings_tab.setLayout(layout)
-
-        settings_index=self.tabs.addTab(self.settings_tab, QIcon("assets/settings.jpg"), "")
+        settings_index = self.tabs.addTab(self.settings_tab, QIcon("assets/settings.jpg"), "Settings")
         self.tabs.setTabToolTip(settings_index, "⚙️ Settings – Customize ReconCraft preferences")
-        self.tabs.setTabText(settings_index, "Settings")
 
 #TOGGLE THEME
 
@@ -930,18 +1021,30 @@ class ReconCraftUI(QMainWindow):
             self.theme_mode = "dark"
 
 
+    def apply_current_theme_to_widget(self, widget):
+        """Call this after adding new widgets/tabs to force them to match the selected theme."""
+        if self.theme_mode == "dark":
+            self.set_dark_theme(widget)
+        elif self.theme_mode == "light":
+            self.set_light_theme(widget)
+        else:
+            self.set_hacker_theme(widget)
+
+
 #DARK THEME
     def set_dark_theme(self):
         self.setStyleSheet("""
         QMainWindow {
             background-color: #1e1e1e;
         }
-
+        QWidget {
+            background-color: #1e1e1e;
+            color: #ffffff;
+        }
         QTabWidget::pane {
             border: 1px solid #444;
             background: #2d2d2d;
         }
-
         QTabBar::tab {
             background: #1e1e1e;
             color: #ffffff;
@@ -954,153 +1057,158 @@ class ReconCraftUI(QMainWindow):
             border-top-right-radius: 4px;
             margin-right: 1px;
         }
-
         QTabBar::tab:selected {
             background: #3a3f44;
             font-weight: bold;
         }
-
         QTabBar::tab:hover {
             background: #50575e;
         }
-
         QLabel, QCheckBox, QPushButton, QListWidget, QLineEdit, QTextEdit {
             color: #ffffff;
             font-size: 14px;
         }
-
+        QScrollArea {
+            background-color: #232629;
+            color: #fff;
+            border: 1px solid #333;
+            border-radius: 6px;
+        }
         QPushButton {
             background-color: #3a3f44;
             border: 1px solid #555;
             padding: 6px;
             border-radius: 5px;
         }
-
         QPushButton:hover {
             background-color: #50575e;
         }
-
         QLineEdit, QTextEdit, QListWidget {
             background-color: #252526;
             border: 1px solid #333;
             border-radius: 3px;
             padding: 4px;
         }
-    """)
+        """)
+
 
 #HACKER THEME
     def set_hacker_theme(self):
         self.setStyleSheet("""
-            QMainWindow {
-                background-color: #000000;
-            }
-
-            QTabWidget::pane {
-                border: 1px solid #0f0;
-                background: #010101;
-            }
-
-            QTabBar::tab {
-                background: #000000;
-                color: #00ff00;
-                padding: 8px;
-                min-width: 110px;
-                max-width: 110px;
-                border: 1px solid #0f0;
-                border-bottom: none;
-                border-top-left-radius: 4px;
-                border-top-right-radius: 4px;
-                margin-right: 1px;
-            }
-
-            QTabBar::tab:selected {
-                background: #003300;
-                font-weight: bold;
-            }
-
-            QTabBar::tab:hover {
-                background: #004d00;
-            }
-
-            QLabel, QCheckBox, QPushButton, QListWidget, QLineEdit, QTextEdit {
-                color: #00ff00;
-                font-size: 14px;
-                font-family: Consolas, Courier New, monospace;
-            }
-
-            QPushButton {
-                background-color: #001100;
-                border: 1px solid #0f0;
-                padding: 6px;
-                border-radius: 3px;
-            }
-
-            QPushButton:hover {
-                background-color: #004d00;
-            }
-
-            QLineEdit, QTextEdit, QListWidget {
-                background-color: #000000;
-                border: 1px solid #0f0;
-                border-radius: 3px;
-                padding: 4px;
-            }
+        QMainWindow {
+            background-color: #000000;
+        }
+        QWidget {
+            background-color: #000000;
+            color: #00ff00;
+            font-family: Consolas, Courier New, monospace;
+        }
+        QTabWidget::pane {
+            border: 1px solid #0f0;
+            background: #010101;
+        }
+        QTabBar::tab {
+            background: #000000;
+            color: #00ff00;
+            padding: 8px;
+            min-width: 110px;
+            max-width: 110px;
+            border: 1px solid #0f0;
+            border-bottom: none;
+            border-top-left-radius: 4px;
+            border-top-right-radius: 4px;
+            margin-right: 1px;
+        }
+        QTabBar::tab:selected {
+            background: #003300;
+            font-weight: bold;
+        }
+        QTabBar::tab:hover {
+            background: #004d00;
+        }
+        QLabel, QCheckBox, QPushButton, QListWidget, QLineEdit, QTextEdit {
+            color: #00ff00;
+            font-size: 14px;
+            font-family: Consolas, Courier New, monospace;
+        }
+        QScrollArea {
+            background-color: #040404;
+            color: #00ff00;
+            border: 1px solid #0f0;
+            border-radius: 6px;
+        }
+        QPushButton {
+            background-color: #001100;
+            border: 1px solid #0f0;
+            padding: 6px;
+            border-radius: 3px;
+        }
+        QPushButton:hover {
+            background-color: #004d00;
+        }
+        QLineEdit, QTextEdit, QListWidget {
+            background-color: #000000;
+            border: 1px solid #0f0;
+            border-radius: 3px;
+            padding: 4px;
+        }
         """)
 
 #LIGHT THEME
 
     def set_light_theme(self):
         self.setStyleSheet("""
-            QMainWindow {
-                background-color: #f0f0f0;
-            }
-
-            QTabWidget::pane {
-                border: 1px solid #aaa;
-                background: #ffffff;
-            }
-
-            QTabBar::tab {
-                background: #ffffff;
-                color: #000000;
-                padding: 8px;
-                min-width: 110px;
-                max-width: 110px;
-                border: 1px solid #ccc;
-                border-bottom: none;
-                border-top-left-radius: 4px;
-                border-top-right-radius: 4px;
-            }
-
-            QTabBar::tab:selected {
-                background: #e0e0e0;
-                font-weight: bold;
-            }
-
-            QTabBar::tab:hover {
-                background: #d0d0d0;
-            }
-
-            QLabel, QCheckBox, QPushButton, QListWidget, QLineEdit, QTextEdit {
-                color: #000000;
-                font-size: 14px;
-            }
-
-            QPushButton {
-                background-color: #e0e0e0;
-                border: 1px solid #999;
-                padding: 6px;
-                border-radius: 5px;
-            }
-
-            QPushButton:hover {
-                background-color: #d0d0d0;
-            }
-
-            QLineEdit, QTextEdit, QListWidget {
-                background-color: #ffffff;
-                border: 1px solid #ccc;
-                border-radius: 3px;
-                padding: 4px;
-            }
+        QMainWindow {
+            background-color: #f0f0f0;
+        }
+        QWidget {
+            background-color: #f0f0f0;
+            color: #000000;
+        }
+        QTabWidget::pane {
+            border: 1px solid #aaa;
+            background: #ffffff;
+        }
+        QTabBar::tab {
+            background: #ffffff;
+            color: #000000;
+            padding: 8px;
+            min-width: 110px;
+            max-width: 110px;
+            border: 1px solid #ccc;
+            border-bottom: none;
+            border-top-left-radius: 4px;
+            border-top-right-radius: 4px;
+        }
+        QTabBar::tab:selected {
+            background: #e0e0e0;
+            font-weight: bold;
+        }
+        QTabBar::tab:hover {
+            background: #d0d0d0;
+        }
+        QLabel, QCheckBox, QPushButton, QListWidget, QLineEdit, QTextEdit {
+            color: #000000;
+            font-size: 14px;
+        }
+        QScrollArea {
+            background-color: #e0e0e0;  # or match your main bg
+            border: none;
+            color: inherit;
+        }          
+        QPushButton {
+            background-color: #e0e0e0;
+            border: 1px solid #999;
+            padding: 6px;
+            border-radius: 5px;
+        }
+        QPushButton:hover {
+            background-color: #d0d0d0;
+        }
+        QLineEdit, QTextEdit, QListWidget {
+            background-color: #ffffff;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+            padding: 4px;
+        }
         """)

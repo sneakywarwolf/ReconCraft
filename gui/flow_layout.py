@@ -1,3 +1,7 @@
+# ReconCraft by Nirmal Chakraborty
+# Copyright (c) 2025. All rights reserved.
+# See LICENSE for details.
+
 from PyQt5.QtWidgets import QLayout, QSizePolicy, QWidgetItem
 from PyQt5.QtCore import QRect, QPoint, QSize, Qt
 

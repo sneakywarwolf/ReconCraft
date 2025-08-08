@@ -1,3 +1,7 @@
+# ReconCraft by Nirmal Chakraborty
+# Copyright (c) 2025. All rights reserved.
+# See LICENSE for details.
+
 from reconcraft import read_ip_list, load_plugins, scan_target, report_data
 import logging
 import json

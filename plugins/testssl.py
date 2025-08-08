@@ -1,9 +1,19 @@
-REQUIRED_TOOL = "testssl"   # e.g., "nmap", "gobuster", etc.
-INSTALL_HINT = "manual"         # "apt", "brew", "pip", "go", or "manual"
-INSTALL_URL = "https://testssl.sh"             # For manual tools (if any)
+REQUIRED_TOOL = "testssl"
+INSTALL_HINT = "manual"
+INSTALL_URL = ""
 
-def run(ip_or_domain, raw_dir, base_dir, run_command, check_tool_installed, extract_cves):
+DEFAULT_ARGS = {
+    "Aggressive": "{target} --fast --wide --tlsall",
+    "Normal":     "{target} --fast",
+    "Passive":    "DISABLED",
+}
+
+def run(ip_or_domain, raw_dir, base_dir, run_command, check_tool_installed, extract_cves, args="", output_callback=None):
     plugin_name = REQUIRED_TOOL
+
+    # ✅ Step 0: Skip if DISABLED (from profile/mode)
+    if isinstance(args, str) and args.upper() == "DISABLED":
+        return (f"[!] {plugin_name} is disabled for this profile. Skipping {ip_or_domain}.", True)
 
     # ✅ Step 1: Check if tool is installed
     if not check_tool_installed(plugin_name):
@@ -12,14 +22,27 @@ def run(ip_or_domain, raw_dir, base_dir, run_command, check_tool_installed, extr
     # ✅ Step 2: Set output file path
     raw_file = f"{ip_or_domain}_{plugin_name}.txt"
 
-    # ✅ Step 3: Run the command (customize as needed)
-    cmd = ['bash', 'testssl.sh', 'ip_or_domain']
-    output_path = run_command(cmd, raw_file)
+    # ✅ Step 3: Use preprocessed args (should already have {target} replaced)
+    arg_list = args.split() if args else []
 
-    # ✅ Step 4: Optionally extract CVEs
-    # extract_cves(output_path, ip_or_domain)  ← Optional
+    # 📌 Construct the final command as a list
+    cmd = [plugin_name] + arg_list
 
-    # ✅ Step 5: Read and return the output as a tuple (output, False)
+    # 🔍 Debug output (prints to console and optionally to status/output callback)
+    print("DEBUG CMD:", cmd)
+    if output_callback:
+        output_callback(f"DEBUG CMD: {' '.join(cmd)}")
+    print("ARGS RECEIVED:", args)
+    if output_callback:
+        output_callback(f"ARGS RECEIVED: {args}")
+
+    # ✅ Step 4: Run the command
+    output_path = run_command(cmd, raw_file, output_callback=output_callback)
+
+    # ✅ Step 5: (Optional) Extract CVEs from output (if implemented)
+    # extract_cves(output_path, ip_or_domain)
+
+    # ✅ Step 6: Return final output
     with open(output_path, "r", encoding="utf-8") as f:
         output = f.read()
     return (output, False)
