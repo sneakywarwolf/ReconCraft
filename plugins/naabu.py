@@ -1,11 +1,48 @@
-"""
-naabu - Fast port scanner.
-"""
-def run(ip, raw_dir, base_dir, run_command, check_tool_installed, extract_cves):
-    if not check_tool_installed("naabu"):
-        print(f"[!] naabu not installed. Skipping {ip}.")
-        return
-    raw_file = f"{ip}_naabu.txt"
-    output_path = run_command(["naabu", "-host", ip], raw_file)
-    # naabu doesn't output CVEs; no extract_cves needed
-    print(f"[✓] naabu scan completed for {ip}. Results saved to {output_path}.")
+REQUIRED_TOOL = "naabu"
+INSTALL_HINT = "go"
+INSTALL_URL = "github.com/projectdiscovery/naabu/v2/cmd/naabu"
+
+DEFAULT_ARGS = {
+    "Aggressive": "-host {target} -p - -rate 50000",
+    "Normal":     "-host {target}",
+    "Passive":    "DISABLED",
+}
+
+def run(ip_or_domain, raw_dir, base_dir, run_command, check_tool_installed, extract_cves, args="", output_callback=None):
+    plugin_name = REQUIRED_TOOL
+
+    # ✅ Step 0: Skip if DISABLED (from profile/mode)
+    if isinstance(args, str) and args.upper() == "DISABLED":
+        return (f"[!] {plugin_name} is disabled for this profile. Skipping {ip_or_domain}.", True)
+
+    # ✅ Step 1: Check if tool is installed
+    if not check_tool_installed(plugin_name):
+        return (f"[!] {plugin_name} not installed. Skipping {ip_or_domain}.", True)
+
+    # ✅ Step 2: Set output file path
+    raw_file = f"{ip_or_domain}_{plugin_name}.txt"
+
+    # ✅ Step 3: Use preprocessed args (should already have {target} replaced)
+    arg_list = args.split() if args else []
+
+    # 📌 Construct the final command as a list
+    cmd = [plugin_name] + arg_list
+
+    # 🔍 Debug output (prints to console and optionally to status/output callback)
+    print("DEBUG CMD:", cmd)
+    if output_callback:
+        output_callback(f"DEBUG CMD: {' '.join(cmd)}")
+    print("ARGS RECEIVED:", args)
+    if output_callback:
+        output_callback(f"ARGS RECEIVED: {args}")
+
+    # ✅ Step 4: Run the command
+    output_path = run_command(cmd, raw_file, output_callback=output_callback)
+
+    # ✅ Step 5: (Optional) Extract CVEs from output (if implemented)
+    # extract_cves(output_path, ip_or_domain)
+
+    # ✅ Step 6: Return final output
+    with open(output_path, "r", encoding="utf-8") as f:
+        output = f.read()
+    return (output, False)
