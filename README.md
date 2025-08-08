@@ -18,13 +18,9 @@
 
 ---
 
-  
 
-  
 
 ## 🚀 Overview
-
-  
 
   
 
@@ -32,158 +28,80 @@
 
   
 
-  
-
 -  **Dynamic plugin system** – Just drop plugins in `/plugins` to add/remove tools.
 
-  
 
 -  **Parallel scanning** – Scan multiple targets and tools, all at once.
 
-  
 
 -  **Scan profiles & arguments** – Aggressive, Normal, Passive, or Custom mode per tool.
 
   
-
 -  **Resource management** – Limit concurrency for VM stability.
 
-  
 
 -  **Tool health checks** – Instantly see which tools are installed or missing.
 
   
-
 -  **Automatic installer** – Try to install missing tools (apt, brew, pip, go, etc.).
 
-  
 
 -  **Modern PyQt5 UI** – Three themes, responsive, tabbed, clean.
 
-  
 
 -  **Real-time output, abort, and progress**
 
   
-
 -  **Open source, MIT license with attribution**
 
   
-
 ---
 
-  
 
 ## 📁 File Structure
-
-  
-
-  
+ 
 
 ```plaintext
 
-  
-
 ReconCraft/
-
-  
-
 │
 
-  
-
 ├── assets/ # Icons, banners, UI images
-
-  
-
 ├── core/ # Core logic (scan thread, utils)
-
-  
-
 ├── gui/ # PyQt5 GUI code
-
-  
-
 ├── plugins/ # Python recon plugins
-
-  
-
 ├── tool_scripts/ # (Optional) Scripts used by plugins
-
-  
-
 ├── Scan Results/ # Scan outputs
-
-  
-
 ├── main.py # Entrypoint
-
-  
-
 ├── requirements.txt # Requirements
-
-  
-
 ├── LICENSE # License
-
-  
-
 └── README.md
-
-  
 
 ````
 
-  
-
-  
-
 ---
 
-  
 
-  
 
 ## 📸 Screenshots
 
   
 
-  
+|           Scan Tab        |     Check Tools with Dynamic Status  |
+| ------------------------- | ------------------------- |
+| <img src="assets/Screenshots/scan-module.png" width="400"> | <img src="assets/Screenshots/check-tools.png" width="400"> |
 
-| Scan Tab | Check Tools / Status | CVSS-Calc
+|    CVSS-Calc    |    Some Tools Missing    |
+| ------------------------- | ------------------------- |
+| <img src="assets/Screenshots/cvss-calc.png" width="400"> | <img src="assets/Screenshots/check-tools-3.png" width="400"> |
 
-  
+| Scanning | Scan Mode |
+| ------------------------- | ------------------------- |
+| <img src="assets/Screenshots/scan-running-2.png" width="400"> | <img src="assets/Screenshots/Settings-Modes.png" width="400"> |
 
-| ----------------------------------------------- | -------------------------------------------------- |
-
-  
-
-| ![Scan Tab](assets/Screenshots/scan-module.png) | ![Check Tools](assets/Screenshots/check-tools.png) |
-
-  
-
-| ----------------------------------------------- | -------------------------------------------------- |
-
-  
-
-| ![CVSS-Calc](assets/Screenshots/cvss-calc.png) | ![Check Tools-II](assets/Screenshots/check-tools-3.png) |
-
-  
-  
-
-| ----------------------------------------------- | -------------------------------------------------- |
-
-  
-
-| ![Scanning](assets/Screenshots/scan-running-2.png) | ![Settings](assets/Screenshots/Settings-Modes.png) |
-
-
-
-| ----------------------------------------------- | -------------------------------------------------- | 
-
-
-
-                          | ![Reports](assets/Screenshots/Report-1.png) |  
+| Reports | Themes to Switch |
+| ------------------------- | ------------------------- |
+| <img src="assets/Screenshots/report-1.png" width="400"> | <img src="assets/Screenshots/themes.png" width="400">
 
 ---
 
@@ -257,13 +175,10 @@ Three themes (dark, light, hacker), tabbed navigation, plugin help buttons.
 
 MIT license – but visible author credit is required.
 
-  
-
-  
+   
 
 ---
 
-  
 
   
 
@@ -277,19 +192,11 @@ MIT license – but visible author credit is required.
 
   
 
-  
-
 * Python 3.8+
-
-  
 
 * [PyQt5](https://pypi.org/project/PyQt5/)
 
-  
-
 * Common recon tools (nmap, amass, gobuster, nuclei, subfinder, etc.)
-
-  
 
   
 
@@ -297,36 +204,23 @@ MIT license – but visible author credit is required.
 
   
 
-  
-
 ```bash
 
-  
-
 git clone https://github.com/sneakywarwolf/ReconCraft.git
-
 cd ReconCraft
-
 pip install -r requirements.txt
-
 python main.py
-
-  
 
 ```
 
-  
-
 > ⚠️ Some tools require system dependencies or admin rights.
 
-  
 
 > Use “Check Tools” or “Install Missing Tools” for help.
  
 
 ---
 
-Here’s the brief, emoji-rich, README-ready version for you to copy-paste:
 
 ----------
 
@@ -394,61 +288,37 @@ ReconCraft comes with **built-in tool management** to verify and install all req
 ----------
   
 
-  
-
 ## 🧩 Plugin System
 
-  
-
-  
 
 * Create and Drop `.py` plugin files into `/plugins/` (e.g., `nmap.py`, `amass.py`)
 
-  
-
 * Refer [TEMPLATE](plugins/Template.txt) **to create your own plugin**
-
-  
 
 * Each plugin **must** include:
 
 *  `REQUIRED_TOOL`: The tool/binary name
 
-  
-
 *  `INSTALL_HINT`: One of `apt`, `pip`, `go`, `brew`, `manual`
-
-  
 
 * (Optional) `INSTALL_URL`: Official docs/download
 
-  
-
 *  `PLUGIN_ARGS`: Dict for Aggressive/Normal/Passive profiles
-
-  
 
 *  `run()`: Receives target, args, helpers, mode
 
   
 
-  
 
 **Plugins appear as tools in the Scan tab with checkboxes.**
 
-  
-
-  
+    
 
 ---
 
   
 
-  
-
 ## 🧑‍💻 Plugin Development Guide
-
-  
 
   
 
@@ -460,97 +330,47 @@ ReconCraft comes with **built-in tool management** to verify and install all req
 
 ```python
 
-  
-
 REQUIRED_TOOL = "nmap"  # e.g., "nmap", "gobuster"
-
-  
-
 INSTALL_HINT = "apt"  # "apt", "pip", "brew", "go", or "manual"
-
-  
-
 INSTALL_URL = ""  # Docs/download URL
-
-  
-
 PLUGIN_ARGS = {
 
-  
-
 "Aggressive": "-p- -A",
-
-  
-
 "Normal": "-T4",
-
-  
-
 "Passive": "DISABLED"
 
-  
-
 }
-
-  
 
 def  run(ip_or_domain, raw_dir, base_dir, run_command, check_tool_installed, extract_cves, mode="Normal", custom_args=None):
 
 plugin_name = REQUIRED_TOOL
 
 # Step 1: Check if tool is installed
-
-  
-
 if  not check_tool_installed(plugin_name):
-
-return (f"[!] {plugin_name} not installed. Skipping {ip_or_domain}.", True)
+  return (f"[!] {plugin_name} not installed. Skipping {ip_or_domain}.", True)
 
 # Step 2: Set output file path
-
 raw_file = f"{ip_or_domain}_{plugin_name}.txt"
 
-  
-
 # Step 3: Get arguments
-
 args = custom_args or PLUGIN_ARGS.get(mode, "")
-
 if args == "DISABLED":
-
-return (f"[!] {plugin_name} is disabled for mode '{mode}'.", True)
+  return (f"[!] {plugin_name} is disabled for mode '{mode}'.", True)
 
 cmd = [plugin_name] + args.split() + [ip_or_domain]
-
 output_path = run_command(cmd, raw_file)
 
-  
-
 # Step 4: Optionally extract CVEs
-
 # extract_cves(output_path, ip_or_domain) # ← Optional
 
-  
-
 # Step 5: Read and return output
-
 with  open(output_path, "r", encoding="utf-8") as f:
-
 output = f.read()
-
 return (output, False)
-
-  
 
 ```
 
-  
-
-  
-
 ---
-
-  
 
   
 
@@ -558,83 +378,47 @@ return (output, False)
 
   
 
-  
-
 ```python
-
-  
 
 REQUIRED_TOOL = "gobuster"
 
-  
-
 INSTALL_HINT = "apt"
-
-  
 
 INSTALL_URL = "https://github.com/OJ/gobuster"
 
-  
-
 PLUGIN_ARGS = {
-
-  
 
 "Aggressive": "dir -u {target} -w /usr/share/wordlists/dirb/common.txt -t 100",
 
-  
-
 "Normal": "dir -u {target} -w /usr/share/wordlists/dirb/common.txt",
-
-  
 
 "Passive": "DISABLED"
 
-  
-
 }
-
-  
 
 def  run(ip_or_domain, raw_dir, base_dir, run_command, check_tool_installed, extract_cves, mode="Normal", custom_args=None):
 
 plugin_name = REQUIRED_TOOL
 
 if  not check_tool_installed(plugin_name):
-
-return (f"[!] {plugin_name} not installed. Skipping {ip_or_domain}.", True)
-
-args = custom_args or PLUGIN_ARGS.get(mode, "")
+  return (f"[!] {plugin_name} not installed. Skipping {ip_or_domain}.", True)
+  args = custom_args or PLUGIN_ARGS.get(mode, "")
 
 if args == "DISABLED":
-
-return (f"[!] {plugin_name} is disabled for mode '{mode}'.", True)
-
-  
+  return (f"[!] {plugin_name} is disabled for mode '{mode}'.", True)
 
 # Substitute {target} in args if needed
 
-  
-
 cmd = [plugin_name] + [s if s != "{target}"  else ip_or_domain for s in args.split()]
-
 raw_file = f"{ip_or_domain}_{plugin_name}.txt"
-
 output_path = run_command(cmd, raw_file)
-
 with  open(output_path, "r", encoding="utf-8") as f:
-
 output = f.read()
-
 return (output, False)
-
-  
 
 ```
 
-  
-
-  
+    
 
 ---
 
