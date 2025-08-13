@@ -381,23 +381,15 @@ return (output, False)
 ```python
 
 REQUIRED_TOOL = "gobuster"
-
 INSTALL_HINT = "apt"
-
 INSTALL_URL = "https://github.com/OJ/gobuster"
-
 PLUGIN_ARGS = {
-
 "Aggressive": "dir -u {target} -w /usr/share/wordlists/dirb/common.txt -t 100",
-
 "Normal": "dir -u {target} -w /usr/share/wordlists/dirb/common.txt",
-
 "Passive": "DISABLED"
-
 }
 
 def  run(ip_or_domain, raw_dir, base_dir, run_command, check_tool_installed, extract_cves, mode="Normal", custom_args=None):
-
 plugin_name = REQUIRED_TOOL
 
 if  not check_tool_installed(plugin_name):
@@ -408,7 +400,6 @@ if args == "DISABLED":
   return (f"[!] {plugin_name} is disabled for mode '{mode}'.", True)
 
 # Substitute {target} in args if needed
-
 cmd = [plugin_name] + [s if s != "{target}"  else ip_or_domain for s in args.split()]
 raw_file = f"{ip_or_domain}_{plugin_name}.txt"
 output_path = run_command(cmd, raw_file)
