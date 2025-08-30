@@ -157,7 +157,7 @@ sudo python main.py
 
 ## 📸Screenshots
 
-| &emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp; Scan Tab &emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp; | &emsp;&emsp;&emsp;&emsp;&emsp;&emsp;Check Tools with Dynamic Status&emsp;&emsp;&emsp;&emsp;|
+| &emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp; Scan Tab &emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp; |&emsp;&emsp;&emsp;&emsp;Check Tools with Dynamic Status&emsp;&emsp;&emsp;&emsp;|
 | ---------------------------------------------------------- |  ---------------------------------------------------------- |
 <img src="assets/Screenshots/scan-module.png" width="400"> | <img src="assets/Screenshots/check-tools.png" width="400"> 
 
@@ -165,11 +165,11 @@ sudo python main.py
 | ---------------------------------------------------------- |  ---------------------------------------------------------- |
 | <img src="assets/Screenshots/cvss-calc.png" width="400"> | <img src="assets/Screenshots/check-tools-3.png" width="400"> |
 
-|&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;Scan Running&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;|&emsp;&emsp;&emsp;&emsp;&emsp;&emsp; Scan Profiles &emsp;&emsp;&emsp;&emsp;|
+|&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;Scan Running&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;|&emsp;&emsp;&emsp;&emsp;&emsp;&emsp; Scan Profiles &emsp;&emsp;&emsp;&emsp;|
 | ---------------------------------------------------------- |  ---------------------------------------------------------- |
 | <img src="assets/Screenshots/scan-running-2.png" width="400"> | <img src="assets/Screenshots/Settings-Modes.png" width="400"> |
 
-|&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;Report Viewing&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&nbsp;  |&emsp;&emsp;&emsp;&emsp;&emsp;&emsp; Themese to Switch &emsp;&emsp;&emsp;&emsp;|
+|&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;Report Viewing&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&nbsp;  |&emsp;&emsp;&emsp;&emsp;&emsp;&emsp; Themes to Switch &emsp;&emsp;&emsp;&emsp;|
 | ---------------------------------------------------------- |  ---------------------------------------------------------- |
 | <img src="assets/Screenshots/report-1.png" width="400"> | <img src="assets/Screenshots/Themes.png" width="400">|
 
