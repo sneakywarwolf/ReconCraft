@@ -5,10 +5,16 @@
 
 
 from PyQt5.QtCore import QThread, pyqtSignal
-import subprocess
-import os
+import os, sys, time, subprocess, threading, signal
 import concurrent.futures
 import importlib
+from core.plugin_loader import discover_plugins
+from pathlib import Path
+from core.file_conventions import run_paths
+from datetime import datetime
+from threading import Event, Lock
+
+        
 
 class ScanThread(QThread):
     log_signal = pyqtSignal(str)
@@ -16,24 +22,34 @@ class ScanThread(QThread):
     progress_signal = pyqtSignal(int)
     status_signal = pyqtSignal(str)
 
-    def __init__(self, targets, tools, report_root_folder, scan_mode="Normal"):
+    def __init__(self,
+                targets,
+                tools,
+                report_root_folder,
+                scan_mode="Normal",
+                # --- NEW (optional; safe defaults) ---
+                profile_mode=None,
+                custom_args_map=None):
         super().__init__()
-        self.scan_mode = scan_mode     #storing the scanning mode
+        self.scan_mode = scan_mode     # storing the scanning mode (kept)
         self.targets = targets
         self.tools = tools
         self.report_root_folder = report_root_folder
         self.total_tasks = len(targets) * len(tools)
         self.completed_tasks = 0
-        self.plugin_map = {}
-        self.load_plugins()
+        self.plugin_map = discover_plugins()
+        self.cancel_event = threading.Event()   # <- allows Abort to signal cancellation
+        self._cancel = Event()      # ✅ cooperative cancel flag
+        self._procs = set()         # ✅ track live subprocess.Popen objects
+        self._procs_lock = Lock()
 
-    def load_plugins(self):
-        plugin_folder = "plugins"
-        for file in os.listdir(plugin_folder):
-            if file.endswith(".py") and not file.startswith("__"):
-                plugin_name = file[:-3]
-                module = importlib.import_module(f"plugins.{plugin_name}")
-                self.plugin_map[plugin_name] = module  
+
+        # --- NEW: runtime profile + flattened custom args (no impact if not provided) ---
+        # If caller doesn't pass profile_mode, we mirror scan_mode. Everything is lowercase internally.
+        self.profile_mode = (profile_mode or scan_mode or "Normal").lower()
+        # Flattened dict like {"nmap": "-sn {{target}}", "httpx": "…"}
+        self.custom_args_map = dict(custom_args_map or {})
+
 
 
     def get_all_tools(self):
@@ -42,67 +58,197 @@ class ScanThread(QThread):
         """
         return list(self.plugin_map.keys())
 
+    def request_cancel(self):
+        # set flag so workers stop asap
+        self._cancel.set()
+        try:
+            # trip the shared event used by run_command() cooperative checks
+            self.cancel_event.set()
+        except Exception:
+            pass
+        # kill any running processes quickly
+        with self._procs_lock:
+            procs = list(self._procs)
+        for p in procs:
+            try:
+                p.terminate() if os.name == "nt" else p.send_signal(signal.SIGTERM)
+            except Exception:
+                pass
+
 
     def run(self):
         
-        error_occurred = False  # ✅ Track if any tool fails
+        error_occurred = False # Flag to track if any error occurred
         os.makedirs(self.report_root_folder, exist_ok=True)
+        # Creating a subfolder for all reports
+        all_reports_dir = os.path.join(self.report_root_folder, "All Reports")
+        os.makedirs(all_reports_dir, exist_ok=True)
+        # Prepare for future MCP/AI (folder only; no writes yet)
+        #machine_dir = os.path.join(self.report_root_folder, "machine")
+        #os.makedirs(machine_dir, exist_ok=True)
         self.log_signal.emit(f"⚙ Launching tools on {len(self.targets)} target(s)...")
 
+        if self.cancel_event.is_set():
+            self.log_signal.emit("⏹️ Scan aborted before start.")
+            self.finished_signal.emit("done_error")
+            return
+        
+        import concurrent.futures  # ensure available in scope
         with concurrent.futures.ThreadPoolExecutor() as executor:
             futures = []
+
+            # 👉 Schedule all (tool × target) jobs
             for target in self.targets:
-                target_folder = os.path.join(self.report_root_folder, target.replace(".", "_"))
-                os.makedirs(target_folder, exist_ok=True)
-
+                if self.cancel_event.is_set():
+                    break
                 for tool in self.tools:
-                    futures.append(executor.submit(self.run_tool_and_save, tool, target, target_folder))
+                    if self.cancel_event.is_set():
+                        break
+                    # target_folder is not used anymore by the writer; keep signature
+                    futures.append(executor.submit(self.run_tool_and_save, tool, target, None))
 
-            for future in concurrent.futures.as_completed(futures):
-                result = future.result()
+            # If cancel was requested during submission, cancel queued immediately
+            if self.cancel_event.is_set():
+                for f in futures:
+                    f.cancel()
+                self.log_signal.emit("⏹️ Cancelling remaining tasks…")
+                try:
+                    executor.shutdown(cancel_futures=True)  # Python 3.9+
+                except TypeError:
+                    executor.shutdown()
+            else:
+                for future in concurrent.futures.as_completed(futures):
+                    if self.cancel_event.is_set():
+                        # best-effort cancel remaining futures
+                        for f in futures:
+                            f.cancel()
+                        self.log_signal.emit("⏹️ Cancelling remaining tasks…")
+                        try:
+                            executor.shutdown(cancel_futures=True)
+                        except TypeError:
+                            pass
+                        break
 
-                # ✅ Support both old and updated return values
-                if isinstance(result, tuple):
-                    result_msg, had_error = result
-                    if had_error:
+                    result = future.result()
+
+                    # ✅ Support both old and updated return values
+                    if isinstance(result, tuple):
+                        result_msg, had_error = result
+                        if had_error:
+                            error_occurred = True
+                    else:
+                        result_msg = result  # fallback
                         error_occurred = True
-                else:
-                    result_msg = result  # fallback
-                    error_occurred = True
 
-                self.completed_tasks += 1
-                progress_percent = int((self.completed_tasks / self.total_tasks) * 100)
-                self.log_signal.emit(result_msg)
-                self.progress_signal.emit(progress_percent)
+                    self.completed_tasks += 1
+                    progress_percent = int((self.completed_tasks / self.total_tasks) * 100) if getattr(self, "total_tasks", 0) else 100
+                    self.log_signal.emit(result_msg)
+                    self.progress_signal.emit(progress_percent)
 
-        # ✅ Emit final status based on error flag
-        if error_occurred:
+        if self.cancel_event.is_set():
+            self.log_signal.emit("⏹️ Scan aborted by user.")
             self.finished_signal.emit("done_error")
-        else:
-            self.finished_signal.emit("done_success")
+            return
+        
+        # ✅ Emit final status based on error flag
+        self.finished_signal.emit("done_error" if error_occurred else "done_success")
 
+
+    # Refactored to handle both raw text and pre-saved paths
     def run_tool_and_save(self, tool, target, target_folder):
-        try:
-            output = self.run_tool(tool, target)
+        """
+        Runs a plugin (self.run_tool) and saves output to:
+        Scan Results/<scan_folder>/All Reports/<target>/<tool>/<run_id>/raw_<tool>.log
+        Creates formatted/ and exports/ for that run.
+        Ensures empty machine/ under <scan_folder>.
 
-            # --- If output is a tuple (msg, error_flag) ---
+        NOTE:
+        - Dedupe is per (tool, target) so multiple targets never merge.
+        - run_id is time-based (target is a folder above).
+        """
+        if self.cancel_event.is_set():
+            return f"⏹️ Skipping {tool} for {target} (aborted).", True
+        # --- small helpers (local; no external deps) ---
+        def _norm(s: str) -> str:
+            s = (s or "").strip().lower()
+            return "".join(ch if (ch.isalnum() or ch in "-_.") else "_" for ch in s).strip("_")
+
+        try:
+            tool_key   = _norm(tool)
+            target_key = _norm(target)
+
+            # expose current (tool, target) to run_command() without changing its signature
+            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+            setattr(self, "_active_run_ctx", {"tool": tool_key, "target": target_key, "run_id": ts})
+            try:
+
+                output = self.run_tool(tool, target)
+            finally:
+                # always clear context
+                try:
+                    delattr(self, "_active_run_ctx")
+                except Exception:
+                    pass
+
+            # --- If plugin returned (msg, had_error) keep the contract ---
             if isinstance(output, tuple):
                 msg, had_error = output
                 if had_error:
-                    # LOG the error with ❌, DO NOT save output, DO NOT show green tick
                     return f"❌ {tool} failed for {target}: {msg}", True
-                output = msg  # Only save file if not an error
+                output = msg
+
+            # --- If plugin already saved via run_command() and returned the path, use it ---
+            if isinstance(output, str):
+                p = Path(output)
+                if p.is_file():
+                    return f"✅ {tool} finished for {target}. Output saved to: {p}", False
+
+            # --- Look for a very recent raw path recorded by run_command() for THIS (tool, target) ---
+            recent_map = getattr(self, "_last_run_paths", {})
+            rec = recent_map.get((tool_key, target_key))
+            if rec:
+                last_path = Path(rec.get("path", ""))
+                last_ts = rec.get("ts", 0)
+                if last_path.is_file() and (time.time() - last_ts) <= 15:
+                    return f"✅ {tool} finished for {target}. Output saved to: {last_path}", False
 
             # --- Additional safeguard for blank output ---
-            if output is None or output.strip() == "":
+            if output is None or (isinstance(output, str) and output.strip() == ""):
                 return f"❌ {tool} produced no output for {target}.", True
 
-            # --- Save the output file only if NOT an error ---
-            file_path = os.path.join(target_folder, f"{tool}_{target}.txt")
-            with open(file_path, "w", encoding="utf-8") as f:
-                f.write(output)
+            # Roots
+            scan_root = Path(self.report_root_folder)
+            all_reports_root = scan_root / "All Reports"
+            all_reports_root.mkdir(parents=True, exist_ok=True)
+            # ✅ machine under scan folder (not under All Reports)
+            (scan_root / "machine").mkdir(parents=True, exist_ok=True)
 
-            return f"✅ {tool} finished for {target}. Output saved to: {file_path}", False
+            # Per-run dirs — target-first layout
+            run_id = ts
+
+            run_dir = all_reports_root / target_key / tool_key / run_id
+            formatted_dir = run_dir / "formatted"
+            exports_dir = run_dir / "exports"
+            run_dir.mkdir(parents=True, exist_ok=True)
+            formatted_dir.mkdir(parents=True, exist_ok=True)
+            exports_dir.mkdir(parents=True, exist_ok=True)
+
+            raw_log_path = run_dir / f"raw_{tool_key}.log"
+            with open(raw_log_path, "w", encoding="utf-8") as f:
+                f.write(output if isinstance(output, str) else str(output))
+
+            # remember this write in case plugin returns non-path
+            try:
+                if not hasattr(self, "_last_run_paths"):
+                    self._last_run_paths = {}
+                self._last_run_paths[(tool_key, target_key)] = {
+                    "path": str(raw_log_path),
+                    "ts": time.time(),
+                }
+            except Exception:
+                pass
+
+            return f"✅ {tool} finished for {target}. Output saved to: {raw_log_path}", False
 
         except subprocess.CalledProcessError as e:
             return f"❌ {tool} failed for {target}: {e.output}", True
@@ -111,62 +257,243 @@ class ScanThread(QThread):
 
     #Running ⚙️ Plugin-based tools only 
     def run_tool(self, tool, target):
-        if tool in self.plugin_map:
-            raw_dir = os.path.join(self.report_root_folder, "raw")
-            os.makedirs(raw_dir, exist_ok=True)
+            if tool in self.plugin_map:
+                # Use per-run dir so plugin self-writes are isolated per target/tool/run
+                def _norm(s: str) -> str:
+                    s = (s or "").strip().lower()
+                    return "".join(ch if (ch.isalnum() or ch in "-_.") else "_" for ch in s).strip("_")
+                tool_key = _norm(tool)
+                target_key = _norm(target)
+                ctx = getattr(self, "_active_run_ctx", {}) or {}
+                run_id = ctx.get("run_id") or datetime.now().strftime("%Y%m%d_%H%M%S")
+                raw_dir = os.path.join(self.report_root_folder, "All Reports", target_key, tool_key, run_id)
+                os.makedirs(raw_dir, exist_ok=True)
+                os.makedirs(os.path.join(raw_dir, "formatted"), exist_ok=True)
+                os.makedirs(os.path.join(raw_dir, "exports"), exist_ok=True)
 
-            plugin_module = self.plugin_map[tool]                 # ✅ now full module
-            plugin_func = getattr(plugin_module, "run")           # ✅ access .run
-            default_args = getattr(plugin_module, "DEFAULT_ARGS", {})
 
-            scan_mode = getattr(self, "scan_mode", "Normal")
-            scan_args_template = default_args.get(scan_mode, "")
+                plugin_module = self.plugin_map[tool]                 # ✅ now full module
+                plugin_func = getattr(plugin_module, "run")           # ✅ access .run
+                default_args = getattr(plugin_module, "DEFAULT_ARGS", {})
 
-            if isinstance(scan_args_template, str) and scan_args_template.upper() == "DISABLED":
-                return f"[!] {tool} is disabled for {scan_mode} mode. Skipping {target}.", True
+                # Prefer explicit runtime profile if provided; else your original scan_mode
+                active_mode = getattr(self, "profile_mode", None) or getattr(self, "scan_mode", "Normal")
+                scan_mode = active_mode
 
-            replaced_args = scan_args_template.replace("{target}", target)
+                # Map lowercase to plugin DEFAULT_ARGS keys (Aggressive/Normal/Passive)
+                if isinstance(scan_mode, str):
+                    _low = scan_mode.strip().lower()
+                    if _low != "custom":
+                        _keymap = {"aggressive": "Aggressive", "normal": "Normal", "passive": "Passive"}
+                        scan_mode = _keymap.get(_low, scan_mode)
 
-            return plugin_func(                                # ✅ call .run from module
-                target,
-                raw_dir,
-                self.report_root_folder,
-                self.run_command,
-                self.check_tool_installed,
-                self.extract_cves,
-                replaced_args,
-                self.log_signal.emit
-            )
-        else:
-            raise Exception(f"Tool '{tool}' is not supported.")
+                scan_args_template = default_args.get(scan_mode, "")
+
+                # ---------- CUSTOM PROFILE HANDLING (non-invasive) ----------
+                if isinstance(scan_mode, str) and scan_mode.lower() == "custom":
+                    # Expect a flattened map like {"nmap": "-sn {{target}}"}; safe default = ""
+                    custom_map = getattr(self, "custom_args_map", {}) or {}
+                    raw_template = (custom_map.get(tool) or "").strip()
+
+                    # Empty or explicit DISABLED => skip WITHOUT error
+                    if not raw_template or raw_template.upper() == "DISABLED":
+                        msg = f"⚠ Custom disables: {tool} (skipped for {target})."
+                        # (message, had_error=False) so final status isn't marked as failure
+                        return msg, False
+
+                    # Support BOTH {{target}} (new template) and {target} (legacy)
+                    replaced_args = (
+                        raw_template.replace("{{target}}", target).replace("{target}", target)
+                    )
+
+                    # Optional: one-line telemetry to the UI, if log_signal exists
+                    try:
+                        self.log_signal.emit(f"🧩 Using Custom args for {tool}: {raw_template} -> {replaced_args}")
+                    except Exception:
+                        pass
+
+                    return plugin_func(                                # ✅ call .run from module
+                        target,
+                        raw_dir,
+                        self.report_root_folder,
+                        self.run_command,
+                        self.check_tool_installed,
+                        self.extract_cves,
+                        replaced_args,
+                        self.log_signal.emit
+                    )
+
+                # ---------- NON-CUSTOM PROFILES (Aggressive / Normal / Passive): UNCHANGED ----------
+                scan_args_template = default_args.get(scan_mode, "")
+
+                if isinstance(scan_args_template, str) and scan_args_template.upper() == "DISABLED":
+                    return f"[!] {tool} is disabled for {scan_mode} mode. Skipping {target}.", True
+
+                # Support BOTH {{target}} (new template) and {target} (legacy)
+                replaced_args = (
+                    scan_args_template.replace("{{target}}", target).replace("{target}", target)
+                )
+
+                return plugin_func(                                # ✅ call .run from module
+                    target,
+                    raw_dir,
+                    self.report_root_folder,
+                    self.run_command,
+                    self.check_tool_installed,
+                    self.extract_cves,
+                    replaced_args,
+                    self.log_signal.emit
+                )
+            else:
+                raise Exception(f"Tool '{tool}' is not supported.")
+
 
     # 🔧 Helper methods passed into plugins
     def run_command(self, cmd_list, outfile_name, output_callback=None):
         """
-        Runs a command and writes output to a file.
-        If output_callback is provided, logs progress and errors to the GUI.
+        Runs a command and writes output to a file (new layout).
+        Writes to:
+        Scan Results/<scan_folder>/All Reports/<target>/<tool>/<run_id>/raw_<tool>.log
+        Ensures formatted/ and exports/ exist for that run.
+        Also ensures an empty machine/ exists under <scan_folder>.
         """
-        out_path = os.path.join(self.report_root_folder, "raw", outfile_name)
+        # Normalize names
+        def _norm(s: str) -> str:
+            s = (s or "").strip().lower()
+            return "".join(ch if (ch.isalnum() or ch in "-_.") else "_" for ch in s).strip("_")
+
+        # Roots
+        scan_root = Path(self.report_root_folder)
+        all_reports_root = scan_root / "All Reports"
+        all_reports_root.mkdir(parents=True, exist_ok=True)
+        # ✅ machine under scan folder (not under All Reports)
+        (scan_root / "machine").mkdir(parents=True, exist_ok=True)
+
+        # Tool key
+        tool_name = Path(cmd_list[0]).name
+        if tool_name.lower().endswith(".exe"):
+            tool_name = tool_name[:-4]
+        tool_key = _norm(tool_name)
+
+        # Target key: prefer context from run_tool_and_save; else derive a safe fallback
+        ctx = getattr(self, "_active_run_ctx", {}) or {}
+        target_key = ctx.get("target")
+        if not target_key:
+            tail = (outfile_name or "").split("_", 1)[-1]
+            target_key = _norm(tail) or "target"
+
+        # run_id = timestamp only (target is above)
+        ctx_run_id = (getattr(self, "_active_run_ctx", {}) or {}).get("run_id")
+        run_id = ctx_run_id or datetime.now().strftime("%Y%m%d_%H%M%S")
+
+
+        # Canonical run paths — target-first layout
+        run_dir = all_reports_root / target_key / tool_key / run_id
+        formatted_dir = run_dir / "formatted"
+        exports_dir = run_dir / "exports"
+        run_dir.mkdir(parents=True, exist_ok=True)
+        formatted_dir.mkdir(parents=True, exist_ok=True)
+        exports_dir.mkdir(parents=True, exist_ok=True)
+        out_path = str(run_dir / f"raw_{tool_key}.log")
+
+        # Execute
         command_str = " ".join(cmd_list)
         if output_callback:
             output_callback(f"🟢 Running: {command_str}")
 
+        # ✅ Cancellable & non-blocking execution: stream output and honor self.cancel_event
+        aborted = False
         try:
+            # Create a new process group so we can terminate the whole tree on cancel.
+            creationflags = 0
+            preexec_fn = None
+            if os.name == "nt":
+                creationflags = subprocess.CREATE_NEW_PROCESS_GROUP  # type: ignore[attr-defined]
+            else:
+                preexec_fn = os.setsid
+
             with open(out_path, "w", encoding="utf-8") as f:
-                result = subprocess.run(
+                proc = subprocess.Popen(
                     cmd_list,
-                    stdout=f,
+                    stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
-                    text=True
+                    text=True,
+                    bufsize=1,
+                    universal_newlines=True,
+                    creationflags=creationflags,
+                    preexec_fn=preexec_fn,
                 )
-            if output_callback:
-                output_callback(f"✅ Finished: {command_str} (Exit code: {result.returncode})")
-            if result.returncode != 0 and output_callback:
-                output_callback(f"⚠️ Warning: Tool exited with code {result.returncode}. Check the output file for errors.")
+                # Track live processes for abort
+                with self._procs_lock:
+                    self._procs.add(proc)
+
+
+                last_log = time.time()
+                if proc.stdout is not None:
+                    for line in iter(proc.stdout.readline, ""):
+                        f.write(line)
+
+                        # trickle progress to UI (non-spammy)
+                        if output_callback and (time.time() - last_log) > 0.25:
+                            last_log = time.time()
+                            output_callback(line.rstrip())
+
+                        # cooperative cancel
+                        if ( (getattr(self, "cancel_event", None) and self.cancel_event.is_set())
+                             or (getattr(self, "_cancel", None) and self._cancel.is_set()) ):
+
+                            aborted = True
+                            # try to terminate the process tree
+                            try:
+                                if os.name == "nt":
+                                    try:
+                                        proc.send_signal(signal.CTRL_BREAK_EVENT)
+                                    except Exception:
+                                        pass
+                                    proc.terminate()
+                                else:
+                                    try:
+                                        os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+                                    except Exception:
+                                        pass
+                                    proc.terminate()
+                            except Exception as e:
+                                if output_callback:
+                                    output_callback(f"❌ Error running: {command_str}")
+                                    output_callback(str(e))
+                            finally:
+                                # untrack proc
+                                try:
+                                    with self._procs_lock:
+                                        self._procs.discard(proc)
+                                except Exception:
+                                    pass
+
+                            if output_callback:
+                                output_callback("⏹️ Aborted by user.")
+                            break
+
+                # finalize
+                ret = proc.wait()
+                if not aborted:
+                    if output_callback:
+                        output_callback(f"✅ Finished: {command_str} (Exit code: {ret})")
+                    if ret != 0 and output_callback:
+                        output_callback("⚠️ Warning: Tool exited with code "
+                                        f"{ret}. Check the output file for errors.")
         except Exception as e:
             if output_callback:
                 output_callback(f"❌ Error running: {command_str}")
                 output_callback(str(e))
+
+        # Remember most recent raw path for THIS (tool, target)
+        try:
+            if not hasattr(self, "_last_run_paths"):
+                self._last_run_paths = {}
+            self._last_run_paths[(tool_key, target_key)] = {"path": out_path, "ts": time.time()}
+        except Exception:
+            pass
+
         return out_path
 
     def check_tool_installed(self, tool_name):

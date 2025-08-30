@@ -1,145 +1,95 @@
-from PyQt5.QtWidgets import QLabel
-from PyQt5.QtCore import Qt
+from PyQt5.QtWidgets import QLabel, QStatusBar,QSizePolicy, QSpacerItem
+from PyQt5.QtCore import Qt, QTimer
+from PyQt5 import QtCore
+import time
 import platform, shutil, subprocess, sys, webbrowser, importlib, os, shlex, threading, queue
+from core.installer_utils import safe_install_tool, compat_try_install_tool, get_plugin_install_meta, has_cmd
+from pathlib import Path
+from PyQt5.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QCheckBox
 
-def get_copyright_label():
-    label = QLabel('<a href="https://www.linkedin.com/in/nirmalchak/" style="color: #ffaa00; text-decoration: none;"><b>© Nirmal Chakraborty</b></a>')
+
+# Function to create a styled copyright label
+from PyQt5.QtWidgets import QLabel, QSizePolicy, QSpacerItem
+from PyQt5.QtCore import Qt
+
+def get_copyright_label(parent_layout=None, *, place_bottom=False):
+    """
+    Create the styled copyright label.
+
+    - If parent_layout and place_bottom=True are provided,
+      the function will pin the label to the bottom-center of that layout.
+    - If not provided, it just returns the label (current behavior).
+    """
+    label = QLabel(
+        '<a href="https://www.linkedin.com/in/nirmalchak/" '
+        'style="color: #ffaa00; text-decoration: none;"><b>© SneakyWarwolf</b></a>'
+    )
     label.setOpenExternalLinks(True)
     label.setAlignment(Qt.AlignHCenter)
+    # I recommend this way: fixed vertical size so it never creates a tall band
+    label.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
     label.setStyleSheet("""
         color: #ffaa00;
         font-size: 12px;
         font-weight: bold;
-        margin-bottom: 2px;
-        margin-top: 0px;
         margin: 0px;
         padding: 0px;
         font-family: Segoe UI, Arial, sans-serif;
     """)
+
+    # Optional bottom placement (only if caller supplies the layout)
+    if place_bottom and parent_layout is not None:
+        parent_layout.addItem(QSpacerItem(0, 0, QSizePolicy.Minimum, QSizePolicy.Expanding))
+        parent_layout.addWidget(label, 0, Qt.AlignHCenter | Qt.AlignBottom)
+
     return label
 
 # Utility function to run command attempting installations and stream output
 def try_install_tool(command_or_tool, output_func, install_hint=None, install_url=None, max_attempts=2):
     """
-    Attempts to install a tool using known methods.
-    command_or_tool: A full shell command (str) or just the tool name.
-    output_func: Function to emit output to UI or console.
-    install_hint: Optional explicit hint like 'go', 'apt', etc. from plugin.
-    install_url: Optional URL to use (especially for 'go' or 'git' installs).
+    Unified installer:
+      - If `command_or_tool` is a plugin module (has REQUIRED_TOOL), use the new template-aware
+        safe installer (supports Docker shims via TOOL_ALIAS/DOCKER_RUN).
+      - Otherwise, preserve legacy behavior for plain tool names or full shell commands
+        (attempt list, retries, sudo warnings, browser fallback).
+    Returns one of: "installed" | "failed" | "exception" | "manual"
     """
-    system = platform.system().lower()
-    is_shell_command = isinstance(command_or_tool, str) and " " in command_or_tool
-    tool_bin = command_or_tool.strip().split()[0]
+    # ---------------------------
+    # Path 1: New plugin module
+    # ---------------------------
+    if hasattr(command_or_tool, "REQUIRED_TOOL"):
+        plugin = command_or_tool
+        ok, msg = safe_install_tool(plugin, output_func)
 
-    # 🔹 Handle explicit full shell commands (streamed)
-    if is_shell_command:
-        output_func(f"⚙️ Executing: {command_or_tool}")
-        try:
-            rc = run_streamed(command_or_tool, output_func, shell=True)
-            if rc == 0:
-                output_func(f"✅ Successfully installed via: {command_or_tool}")
-                return "installed"
-            else:
-                output_func(f"❌ Install failed (exit {rc}).")
-                return "failed"
-        except Exception as e:
-            output_func(f"❌ Exception occurred: {e}")
-            return "exception"
+        meta = get_plugin_install_meta(plugin)
+        runtime_name = meta.get("runtime_name") or meta.get("alias_name") or meta.get("required_tool")
 
-    # 🔹 Prepare fallback install methods (with sudo handling)
-    methods = []
-
-    is_linux = (system == "linux")
-    is_darwin = (system == "darwin")
-    is_windows = (system == "windows")
-
-    # sudo/root detection (Linux only)
-    is_root = False
-    try:
-        is_root = hasattr(os, "geteuid") and os.geteuid() == 0
-    except Exception:
-        is_root = False
-    has_sudo = shutil.which("sudo") is not None
-
-    # apt (Linux)
-    if install_hint == "apt" or (is_linux and shutil.which("apt")):
-        if is_root:
-            cmd = ["apt", "install", "-y", tool_bin]
-        elif has_sudo:
-            cmd = ["sudo", "apt", "install", "-y", tool_bin]
+        if ok and has_cmd(runtime_name):
+            output_func(f"✅ Installed: {runtime_name}")
+            return "installed"
         else:
-            # No sudo + not root -> warn and still try non-sudo apt (likely to fail),
-            # but at least we explain it.
-            cmd = ["apt", "install", "-y", tool_bin]
-            output_func(
-                f"⚠️ Not running as root and 'sudo' not available. "
-                f"APT install may fail.\n💡 Try: sudo apt install -y {tool_bin}"
-            )
-        methods.append(("apt", cmd))
+            output_func(f"❌ Failed: {msg}")
+            return "failed"
 
-    # brew (macOS)
-    if install_hint == "brew" or (is_darwin and shutil.which("brew")):
-        methods.append(("brew", ["brew", "install", tool_bin]))
-
-    # choco (Windows)
-    if install_hint == "choco" or (is_windows and shutil.which("choco")):
-        methods.append(("choco", ["choco", "install", tool_bin, "-y"]))
-
-    # go (use INSTALL_URL if provided; otherwise fallback with warning)
-    if install_hint == "go" or shutil.which("go"):
-        if install_url:
-            go_path = install_url
-        else:
-            go_path = f"github.com/projectdiscovery/{tool_bin}/cmd/{tool_bin}@latest"
-            output_func(f"⚠️ No INSTALL_URL for Go tool '{tool_bin}', assuming ProjectDiscovery path: {go_path}")
-        methods.append(("go", ["go", "install", go_path]))
-
-    # pip (cross-platform); add late so system package managers get first shot if hinted
-    if install_hint == "pip" or install_hint is None:
-        methods.append(("pip", [sys.executable, "-m", "pip", "install", tool_bin]))
-
-    # git clone + build path (only if hinted and URL exists)
-    if install_hint == "git" and install_url:
-        # NOTE: This is shell chaining; streaming handles it.
-        methods.append(("git", f"git clone {install_url} && cd {tool_bin} && sudo make install"))
-
-    # 🔹 Try all methods, streamed
-    for method_name, cmd in methods:
-        for attempt in range(1, max_attempts + 1):
-            if isinstance(cmd, list):
-                pretty = " ".join(cmd)
-            else:
-                pretty = cmd  # string shell form (git chain)
-            output_func(f"🔁 Attempt {attempt} via {method_name}: {pretty}")
-
-            # Sudo prompt warning
-            if (isinstance(cmd, list) and "sudo" in cmd) or (isinstance(cmd, str) and "sudo " in cmd):
-                output_func(
-                    "🔑 Sudo password might be required!\n"
-                    f"💡 Command: {pretty}\n"
-                    "👉 Check your terminal for a password prompt.\n"
-                    "⚠️ ReconCraft may appear frozen until input is received.\n"
-                )
-
-            try:
-                rc = run_streamed(cmd, output_func, shell=isinstance(cmd, str))
-                if rc == 0:
-                    output_func(f"✅ {tool_bin} installed successfully via {method_name}.")
-                    return "installed"
-                else:
-                    output_func(f"❌ {method_name} failed (exit {rc}).")
-            except Exception as e:
-                output_func(f"❌ {method_name} exception: {e}")
-
-    # 🔹 If all fail
-    output_func(f"⚠️ All install methods failed for '{tool_bin}'.")
-    output_func("🔍 Opening browser for manual instructions…")
+    # ---------------------------
+    # Path 2: Legacy/compat mode
+    #   - command_or_tool can be a plain tool name or a full shell string
+    #   - mirrors your previous try_install_tool behavior exactly
+    # ---------------------------
+    # Use your existing run_streamed if it exists in this module
     try:
-        webbrowser.open(f"https://www.google.com/search?q=install+{tool_bin}+tool")
-    except Exception:
-        output_func("🌐 Could not open browser — please search manually.")
-    return "manual"
+        _runner = run_streamed  # defined elsewhere in common_widget.py
+    except NameError:
+        _runner = None
 
+    return compat_try_install_tool(
+        command_or_tool,
+        output_func,
+        install_hint=install_hint,
+        install_url=install_url,
+        max_attempts=max_attempts,
+        run_streamed=_runner,  # preserves your streaming/UX
+    )
 
 # --- Live streaming command runner (stdout/stderr line-by-line) ---
 def run_streamed(cmd, output_func, *, shell=False, timeout=None):
@@ -170,13 +120,121 @@ def run_streamed(cmd, output_func, *, shell=False, timeout=None):
     t.join(timeout=1)
     return rc
 
+# --- Sudo Prompt Dialog (Linux) ---
+class SudoPromptDialog(QDialog):
+    """
+    Modal sudo prompt. Returns a tuple via .result_tuple:
+      (password_or_None, skip_this: bool, skip_all: bool)
+    """
+    def __init__(self, package_name: str, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Administrator rights required")
+        self.result_tuple = (None, False, False)
 
-def load_plugins():
-    plugin_map = {}
-    plugin_folder = "plugins"
-    for file in os.listdir(plugin_folder):
-        if file.endswith(".py") and not file.startswith("__"):
-            plugin_name = file[:-3]
-            module = importlib.import_module(f"plugins.{plugin_name}")
-            plugin_map[plugin_name] = module
-    return plugin_map
+        v = QVBoxLayout(self)
+        v.addWidget(QLabel(f"Installing '{package_name}' needs sudo.\n"
+                           "Enter your password to continue, or choose a skip option."))
+
+        self.le = QLineEdit(self)
+        self.le.setEchoMode(QLineEdit.Password)
+        self.le.setPlaceholderText("sudo password")
+        v.addWidget(self.le)
+
+        self.remember_cb = QCheckBox("Remember for this session", self)
+        self.remember_cb.setChecked(True)  # worker may choose to cache it in-memory
+        v.addWidget(self.remember_cb)
+
+        btn_row1 = QHBoxLayout()
+        btn_continue = QPushButton("Continue")
+        btn_skip_this = QPushButton("Skip this tool")
+        btn_row1.addWidget(btn_continue)
+        btn_row1.addWidget(btn_skip_this)
+        v.addLayout(btn_row1)
+
+        btn_row2 = QHBoxLayout()
+        btn_skip_all = QPushButton("Skip ALL privileged installs")
+        btn_cancel = QPushButton("Cancel")
+        btn_row2.addWidget(btn_skip_all)
+        btn_row2.addWidget(btn_cancel)
+        v.addLayout(btn_row2)
+
+        btn_continue.clicked.connect(self._on_continue)
+        btn_skip_this.clicked.connect(self._on_skip_this)
+        btn_skip_all.clicked.connect(self._on_skip_all)
+        btn_cancel.clicked.connect(self._on_skip_this)  # treat cancel as skip this
+
+        self.resize(420, 180)
+
+    def _on_continue(self):
+        pwd = self.le.text().strip()
+        self.result_tuple = (pwd if pwd else None, False, False)
+        self.accept()
+
+    def _on_skip_this(self):
+        self.result_tuple = (None, True, False)
+        self.reject()
+
+    def _on_skip_all(self):
+        self.result_tuple = (None, False, True)
+        self.reject()
+
+# This class provides a simple elapsed-time ticker for the status bar
+class ElapsedTicker:
+    def __init__(self, target, interval_ms: int = 250):
+        """
+        target may be:
+          - QStatusBar: ticker creates its own QLabel and adds it as a permanent widget, or
+          - QLabel:     ticker uses the provided label directly.
+        """
+        self._prefix = ""
+        self._start = None
+        self._timer = QtCore.QTimer()
+        self._timer.setInterval(interval_ms)
+        self._timer.timeout.connect(self._on_tick)
+
+        if isinstance(target, QStatusBar):
+            self.status_bar = target
+            self.label = QLabel("")
+            self.status_bar.addPermanentWidget(self.label)
+        elif isinstance(target, QLabel):
+            self.status_bar = None
+            self.label = target
+        else:
+            raise TypeError("ElapsedTicker target must be QStatusBar or QLabel")
+
+        self.hide_label()  # start hidden
+
+    def show_label(self):
+        self.label.setVisible(True)
+
+    def hide_label(self):
+        self.label.setVisible(False)
+
+    def set_prefix(self, text: str):
+        self._prefix = text
+        # optional immediate refresh on GUI thread
+        QtCore.QTimer.singleShot(0, self._on_tick)
+
+    def start(self, prefix="Working…"):
+        self._prefix = prefix
+        self._start = time.monotonic()
+        self.show_label()
+        self._timer.start()
+        self._on_tick()
+
+    def stop(self, final_note: str = None):
+        self._timer.stop()
+        self._start = None          # <- without this, text may keep updating
+        if final_note:
+            self.label.setText(final_note)
+            self.show_label()
+        else:
+            self.hide_label()
+
+    def _on_tick(self):
+        if self._start is None:
+            return
+        elapsed = int(time.monotonic() - self._start)
+        m, s = divmod(elapsed, 60)
+        self.label.setText(f"{self._prefix}  [{m:02d}:{s:02d}]")
+

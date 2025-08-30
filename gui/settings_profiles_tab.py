@@ -2,16 +2,21 @@
 # Copyright (c) 2025. All rights reserved.
 # See LICENSE for details.
 
-
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QRadioButton, QButtonGroup, QPushButton,
     QScrollArea, QFormLayout, QLabel, QLineEdit, QPlainTextEdit, QSpinBox, QToolButton, QMessageBox,
-    QDialog, QSpinBox
+    QDialog
 )
-from PyQt5.QtCore import Qt
-import webbrowser,subprocess
+from PyQt5.QtCore import Qt, pyqtSignal
+import webbrowser, subprocess, os, json
+
 
 class ScanProfileSettingsTab(QWidget):
+    # Let the main UI listen for profile changes and custom profile updates
+    profileChanged      = pyqtSignal(str)   # e.g., "Aggressive" | "Normal" | "Passive" | "Custom"
+    customProfileSaved  = pyqtSignal(dict)  # flattened: {tool_key: "args"}
+    customProfileLoaded = pyqtSignal(dict)  # flattened: {tool_key: "args"}
+
     def __init__(self, plugin_map, parent=None):
         super().__init__(parent)
         self.plugin_map = plugin_map   # {plugin_name: plugin_module}
@@ -19,8 +24,18 @@ class ScanProfileSettingsTab(QWidget):
         self.current_mode = "Normal"
         self.schemas = self.get_plugin_schemas()
         self.profile_configs = self.build_default_profiles()
+
+        # Custom args store (persists across profile switches)
+        # Shape: {plugin: {"args": "..."}}
         self.custom_args = {plugin: self.profile_configs["Normal"][plugin].copy() for plugin in self.schemas}
+
+        # UI build
         self.init_ui()
+
+        # On load, try to pre-load any saved custom profile silently
+        self._load_custom_profile_silent()
+
+    # ---------- Helpers: schema & defaults ----------
 
     def get_plugin_schemas(self):
         schemas = {}
@@ -44,6 +59,7 @@ class ScanProfileSettingsTab(QWidget):
                 profiles[mode][plugin] = {"args": arg}
         return profiles
 
+    # ---------- UI ----------
 
     def init_ui(self):
         self.layout = QVBoxLayout(self)
@@ -91,11 +107,22 @@ class ScanProfileSettingsTab(QWidget):
 
         self.tool_fields = {}  # {plugin: {field: widget}}
 
-        # Save Custom Profile button
+        # Save / Load Custom Profile buttons (shown only in Custom)
+        buttons_row = QHBoxLayout()
+        buttons_row.addStretch(1)
+
         self.save_btn = QPushButton("Save Custom Profile")
         self.save_btn.hide()
         self.save_btn.clicked.connect(self.save_custom_profile)
-        self.layout.addWidget(self.save_btn)
+        buttons_row.addWidget(self.save_btn)
+
+        self.load_btn = QPushButton("Load Custom Profile")
+        self.load_btn.hide()
+        self.load_btn.clicked.connect(self.load_custom_profile)
+        buttons_row.addWidget(self.load_btn)
+
+        buttons_row.addStretch(1)
+        self.layout.addLayout(buttons_row)
 
         # Connect radios
         for prof in self.profiles:
@@ -116,7 +143,8 @@ class ScanProfileSettingsTab(QWidget):
                 "⚠️ High concurrency may slow down or freeze your VM! Use only on powerful systems."
             )
 
-#
+    # ---------- Profile switching & field building ----------
+
     def on_profile_change(self):
         selected = None
         for prof, rb in self.profile_radios.items():
@@ -124,16 +152,22 @@ class ScanProfileSettingsTab(QWidget):
                 selected = prof
                 break
 
+        if getattr(self, "_last_mode_emitted", None) == selected:
+            return
+        self._last_mode_emitted = selected
+        
         self.current_mode = selected
-        self.save_btn.setVisible(selected == "Custom")
 
-        # Pick config to show
+        # Only show Save/Load when Custom is active
+        custom_active = (selected == "Custom")
+        self.save_btn.setVisible(custom_active)
+        self.load_btn.setVisible(custom_active)
+
+        # Pick config to SHOW (do not overwrite self.custom_args when leaving Custom)
         if selected == "Custom":
             config = self.custom_args
         else:
             config = self.profile_configs[selected]
-            # Update custom_args to match for seamless switch
-            self.custom_args = {k: v.copy() for k, v in config.items()}
 
         # Clear and rebuild tool fields
         for i in reversed(range(self.tools_area_layout.count())):
@@ -163,10 +197,15 @@ class ScanProfileSettingsTab(QWidget):
                         w.setText(str(value))
                     w.setStyleSheet("""
                         border: 2px solid #00d9ff;
-                        border-radius: 3px;                        
+                        border-radius: 3px;
                     """)
-                    w.setReadOnly(selected != "Custom")
-                    w.textChanged.connect(self.on_any_arg_changed)
+                    # Editable only in Custom
+                    w.setReadOnly(not custom_active)
+                    # Connect change to capture into self.custom_args
+                    if isinstance(w, QLineEdit):
+                        w.textChanged.connect(self.on_any_arg_changed)
+                    else:
+                        w.textChanged.connect(self.on_any_arg_changed)  # QPlainTextEdit has textChanged(str)
                 elif opts["type"] == "int":
                     w = QSpinBox()
                     w.setMinimum(0)
@@ -174,19 +213,18 @@ class ScanProfileSettingsTab(QWidget):
                     w.setValue(int(value) if str(value).isdigit() else opts.get("default", 0))
                     w.setStyleSheet("""
                         border: 2px solid #00d9ff;
-                        border-radius: 3px;                                     
+                        border-radius: 3px;
                     """)
-                    w.setReadOnly(selected != "Custom")
+                    w.setReadOnly(not custom_active)
                     w.valueChanged.connect(self.on_any_arg_changed)
                 else:
                     w = QLineEdit(str(value))
-                    w.setReadOnly(selected != "Custom")
+                    w.setReadOnly(not custom_active)
                     w.setStyleSheet("""
                         border: 2px solid #00d9ff;
-                        border-radius: 3px;                    
+                        border-radius: 3px;
                     """)
                     w.textChanged.connect(self.on_any_arg_changed)
-
 
                 arg_row = QHBoxLayout()
                 arg_label = QLabel(opts.get("label", field))
@@ -209,7 +247,15 @@ class ScanProfileSettingsTab(QWidget):
                 self.tools_area_layout.addRow(row_widget)
                 self.tool_fields[plugin][field] = w
 
-    
+        # If Custom was selected, auto-load saved profile so fields reflect disk
+        if custom_active:
+            self._apply_custom_args_to_fields(self.custom_args)
+
+        # Let parent know which profile is active
+        self.profileChanged.emit(self.current_mode)
+
+    # ---------- Tool help ----------
+
     def show_tool_help(self, tool_name):
         help_text = ""
         success = False
@@ -259,13 +305,16 @@ class ScanProfileSettingsTab(QWidget):
             url = f"https://www.google.com/search?q={tool_name}+manual"
             webbrowser.open(url)
 
+    # ---------- Custom args change tracking ----------
 
     def on_any_arg_changed(self, *_):
         # Switch to Custom mode if not already
         if self.current_mode != "Custom":
             self.profile_radios["Custom"].setChecked(True)
             self.current_mode = "Custom"
-        # Update custom_args with current values
+            self.profileChanged.emit(self.current_mode)
+
+        # Update custom_args with current values from the visible fields
         for plugin, fields in self.tool_fields.items():
             for field, widget in fields.items():
                 if isinstance(widget, QLineEdit):
@@ -275,14 +324,99 @@ class ScanProfileSettingsTab(QWidget):
                 elif isinstance(widget, QSpinBox):
                     value = widget.value()
                 else:
-                    value = str(widget.text())
+                    # Fallback
+                    try:
+                        value = widget.text()
+                    except Exception:
+                        value = ""
                 self.custom_args.setdefault(plugin, {})[field] = value
 
-    def save_custom_profile(self):
-        import json
+    # ---------- Save / Load Custom profile ----------
+
+    def _custom_profile_path(self) -> str:
+        # Single JSON file next to your project; adjust if you prefer a config dir
+        return os.path.join(os.getcwd(), "custom_scan_profile.json")
+
+    def _flatten_args(self, data: dict) -> dict:
+        """Return {tool: args_str} from a nested map {tool:{'args':...}}."""
+        flat = {}
+        for tool, inner in (data or {}).items():
+            # only 'args' field participates in runtime commands
+            flat[tool] = (inner.get("args") if isinstance(inner, dict) else "")
+        return flat
+
+    def _apply_custom_args_to_fields(self, data: dict):
+        """Push current self.custom_args into visible widgets when Custom is active."""
+        for plugin, fields in self.tool_fields.items():
+            src = (data or {}).get(plugin, {})
+            for field, widget in fields.items():
+                val = src.get(field, "")
+                if isinstance(widget, QLineEdit):
+                    widget.setText(str(val))
+                elif isinstance(widget, QPlainTextEdit):
+                    widget.setPlainText(str(val))
+                elif isinstance(widget, QSpinBox):
+                    try:
+                        widget.setValue(int(val))
+                    except Exception:
+                        pass
+
+    def _collect_fields_into_custom(self):
+        """Refresh self.custom_args from the visible widgets."""
+        for plugin, fields in self.tool_fields.items():
+            for field, widget in fields.items():
+                if isinstance(widget, QLineEdit):
+                    value = widget.text()
+                elif isinstance(widget, QPlainTextEdit):
+                    value = widget.toPlainText()
+                elif isinstance(widget, QSpinBox):
+                    value = widget.value()
+                else:
+                    try:
+                        value = widget.text()
+                    except Exception:
+                        value = ""
+                self.custom_args.setdefault(plugin, {})[field] = value
+
+    def _load_custom_profile_silent(self):
+        """Internal: load if exists, no message boxes."""
         try:
-            with open("custom_scan_profile.json", "w") as f:
-                json.dump(self.custom_args, f, indent=2)
+            with open(self._custom_profile_path(), "r", encoding="utf-8") as f:
+                loaded = json.load(f)
+            if isinstance(loaded, dict):
+                # Expect nested shape {tool:{'args':...}}
+                self.custom_args.update(loaded)
+        except Exception:
+            pass
+
+    def save_custom_profile(self):
+        """Persist the current Custom arguments to disk and emit a flattened map."""
+        # Ensure we capture current on-screen edits before saving
+        self._collect_fields_into_custom()
+        try:
+            with open(self._custom_profile_path(), "w", encoding="utf-8") as f:
+                json.dump(self.custom_args, f, ensure_ascii=False, indent=2)
             QMessageBox.information(self, "Success", "Custom profile saved!")
+            self.customProfileSaved.emit(self._flatten_args(self.custom_args))
         except Exception as e:
             QMessageBox.warning(self, "Error", f"Failed to save profile: {e}")
+
+    def load_custom_profile(self):
+        """Load saved Custom arguments from disk into memory and into the visible fields."""
+        try:
+            with open(self._custom_profile_path(), "r", encoding="utf-8") as f:
+                loaded = json.load(f)
+            if not isinstance(loaded, dict):
+                loaded = {}
+        except FileNotFoundError:
+            loaded = {}
+        except Exception as e:
+            QMessageBox.warning(self, "Error", f"Failed to load profile: {e}")
+            loaded = {}
+
+        # Update store and fields (only shown if Custom is active)
+        self.custom_args = loaded or {}
+        if self.current_mode == "Custom":
+            self._apply_custom_args_to_fields(self.custom_args)
+
+        self.customProfileLoaded.emit(self._flatten_args(self.custom_args))
