@@ -6,9 +6,9 @@
 [![Python](https://img.shields.io/badge/python-3.8%2B-blue?logo=python)](https://www.python.org/) ![ReconCraft](https://img.shields.io/badge/ReconCraft-Information%20Gathering-critical?logo=target) [![Plugins](https://img.shields.io/badge/Plugins-Dynamic%20Modules-orange?logo=plug)]() [![Workflow](https://img.shields.io/badge/Workflow-Forged%20Profiles-purple?logo=terminal)]() [![Linux](https://img.shields.io/badge/OS-Linux--Only-9cf?logo=linux&logoColor=white)]()
 [![PyQt5](https://img.shields.io/badge/UI-PyQt5-brightgreen?logo=qt)](https://pypi.org/project/PyQt5/)                 							[![LinkedIn](https://img.shields.io/badge/linkedin-nirmalchak-blue?logo=linkedin)](https://www.linkedin.com/in/nirmalchak/)    [![PRs Welcome](https://img.shields.io/badge/PRs-Welcome-green?logo=github)](CONTRIBUTING.md) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)  
 
- 
 
-[📦Installation](#Installation) • [📸Screenshots](#Screenshots) • [🛠️Workflow](#Quick-Workflow) •[🔌Plugin System](#Plugin-system)• [🏗️Organised Scan Output](#Organized-Scan-Output) 
+
+[📦 Installation](#installation) •[📸 Screenshots](#screenshots) •[🛠️ Workflow](#quick-workflow) •[🔌Plugin System](#plugin-system) •[🏗️ Organised Scan Output](#organised-scan-output)
 
 
 ## 🚀 Overview
@@ -18,17 +18,17 @@ It is designed for penetration testers, bug bounty hunters, and security profess
 
 ## ✨ Features
 
-⚡ **Linux Supremacy**- Battle Tested on Linux 🐧
-🔌 **Dynamic plugins** – Add or remove tools in `/plugins`  reflected in UI.
-🚀 **Parallel scanning** Across multiple tools & targets.
-   🎛 **Forge Your Profiles** – Create your own Aggressive, Normal, Passive and Custom mode.  
-📊 **Dashboard & Reports** – Instant scan summaries, browsable results. 
+⚡ **Linux Supremacy**- Battle Tested on Linux 🐧<br>
+🔌 **Dynamic plugins** – Add or remove tools in `/plugins`  reflected in UI.<br>
+ 🚀 **Parallel scanning** Across multiple tools & targets.<br>
+ 🎛 **Forge Your Profiles** – Create your own Aggressive, Normal, Passive and Custom mode.  
+📊 **Dashboard & Reports** – Instant scan summaries, browsable results.<br> 
  🧮 **CVSS Calculator** – v3.1 Interactive scoring (v4.0 coming soon)  
  🛡 **Tool health checks** – One-click verification  
- 📥 **Auto-installer** – apt, pip, go, git, Docker supported 
+ 📥 **Auto-installer** – apt, pip, go, git, Docker supported.<br> 
  🛑 **Abort anytime** – Co-operative cancel for scans & installs  
  🔑 **Sudo awareness** – Smart prompts & UI alerts (no frozen windows)  
- 🌐 **Auto-assist** – If installs fail, opens manual docs or support tab in browser.
+ 🌐 **Auto-assist** – If installs fail, opens manual docs or support tab in browser.<br> 
  📜 **Real-time output** – Status updates, logs, and progress bars.  
  🧹 **Resource control** – Tweak concurrency at your will for stable/hyper performance.  
  🎨 **Modern PyQt5 UI** – Themes, icons, responsive design  
@@ -52,13 +52,13 @@ ReconCraft/
   
 
 ## 🖥️ GUI Tabs
-<img src="assets/Screenshots/GUI-tabs" width="450">
+<img src="assets/Screenshots/GUI-tabs.png" width="450">
 
 - **Dashboard (Home)** – Summary of completed scans with status indicators. 
 - **Scan** – Select plugins, configure arguments, start/abort scans. 
 - **Settings** – Choose scan profiles (`Aggressive`, `Normal`, `Passive`, `Custom`).
 - **Reports** – Browse & view reports directly within the UI.   
-- **CVSS Calc.** – Interactive CVSS 3.1 base score calculator.  
+- **CVSS Calc.** – Interactive CVSS 3.1 base score calculator.
 
 
 
@@ -157,30 +157,21 @@ sudo python main.py
 
 ## 📸 Screenshots
 
-| Scan Tab | Check Tools with Dynamic Status |
+| &emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp; Scan Tab &emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp; | &emsp;&emsp;&emsp;&emsp;&emsp;&emsp;Check Tools with Dynamic Status&emsp;&emsp;&emsp;&emsp;|
+| ---------------------------------------------------------- |  ---------------------------------------------------------- |
+<img src="assets/Screenshots/scan-module.png" width="400"> | <img src="assets/Screenshots/check-tools.png" width="400"> 
 
-| ------------------------------------- |  ------------------------------------- |
-
-| <img src="assets/Screenshots/scan-module.png" width="400"> | <img src="assets/Screenshots/check-tools.png" width="400"> |
-
-
-| CVSS-Calc | Some Tools Missing |
-
-| ------------------------------------- |  ------------------------------------- |
-
+| &emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;CVSS-Calc&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp; |&emsp;&emsp;&emsp;&emsp;&emsp;&emsp; Some Tools Missing &emsp;&emsp;&emsp;&emsp; |
+| ---------------------------------------------------------- |  ---------------------------------------------------------- |
 | <img src="assets/Screenshots/cvss-calc.png" width="400"> | <img src="assets/Screenshots/check-tools-3.png" width="400"> |
 
-| ------------------------------------- |  ------------------------------------- |
-
+|&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;Scan Running&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;|&emsp;&emsp;&emsp;&emsp;&emsp;&emsp; Scan Profiles &emsp;&emsp;&emsp;&emsp;|
+| ---------------------------------------------------------- |  ---------------------------------------------------------- |
 | <img src="assets/Screenshots/scan-running-2.png" width="400"> | <img src="assets/Screenshots/Settings-Modes.png" width="400"> |
 
-
-| Reports | Themes to Switch |
-
-| ------------------------------------- |  ------------------------------------- |
-
-| <img src="assets/Screenshots/report-1.png" width="400"> | <img src="assets/Screenshots/themes.png" width="400">|
-
+|&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;Report Viewing&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&nbsp;  |&emsp;&emsp;&emsp;&emsp;&emsp;&emsp; Themese to Switch &emsp;&emsp;&emsp;&emsp;|
+| ---------------------------------------------------------- |  ---------------------------------------------------------- |
+| <img src="assets/Screenshots/report-1.png" width="400"> | <img src="assets/Screenshots/Themes.png" width="400">|
 
 ## 🚧 Upcoming Features
 
