@@ -1,86 +1,106 @@
-import os
-import shutil
-import subprocess
-import sys
-import platform
+#!/usr/bin/env python3
+# ReconCraft by Nirmal Chakraborty
+# Copyright (c) 2025. All rights reserved.
+# See LICENSE for details.
+"""
+ReconCraft installer & launcher
 
-tools = {
-    "nmap": {"linux": "nmap", "windows": "Nmap.Nmap"},
-    "naabu": {"linux": "naabu", "windows": None},
-    "nuclei": {"linux": "nuclei", "windows": None},
-    "nikto": {"linux": "nikto", "windows": None},
-    "amass": {"linux": "amass", "windows": None},
-    "searchsploit": {"linux": "exploitdb", "windows": None}
-}
+- Creates a virtual environment in .venv/
+- Installs dependencies from requirements.txt
+- Immediately launches ReconCraft (main.py) in that venv
 
-missing_tools = []
+Usage:
+    python install.py
+"""
 
-def is_tool_installed(tool):
-    return shutil.which(tool) is not None
+import os, sys, subprocess, venv
+import venv
+from pathlib import Path
 
-def install_on_linux(package_name):
+BASE_DIR = Path(__file__).resolve().parent
+VENV_DIR = BASE_DIR / ".venv"
+REQ_FILE = BASE_DIR / "requirements.txt"
+
+
+def run(cmd, **kwargs):
+    print(f"[*] Running: {' '.join(str(c) for c in cmd)}")
+    result = subprocess.run(cmd, **kwargs)
+    if result.returncode != 0:
+        sys.exit(result.returncode)
+
+
+def create_venv():
+    if VENV_DIR.exists():
+        print("[*] Virtual environment already exists. Skipping creation.")
+    else:
+        print("[*] Creating virtual environment in .venv/")
+        venv.EnvBuilder(with_pip=True).create(str(VENV_DIR))
+
+    # 🔎 Safety check: verify the venv's Python exists
+    py_name = "python.exe" if os.name == "nt" else "python"
+    py_exe = VENV_DIR / ("Scripts" if os.name == "nt" else "bin") / py_name
+    if not py_exe.exists():
+        print(f"[-] Could not find expected Python interpreter in venv: {py_exe}")
+        sys.exit(1)
+    else:
+        print(f"[*] Verified venv interpreter: {py_exe}")
+
+
+def install_deps():
+    print("[*] Installing dependencies from requirements.txt]")
+    py_name = "python.exe" if os.name == "nt" else "python"
+    py_exe = VENV_DIR / ("Scripts" if os.name == "nt" else "bin") / py_name
+    if not REQ_FILE.exists():
+        print("[-] requirements.txt not found!")
+        sys.exit(1)
+
     try:
-        subprocess.run(["sudo", "apt-get", "install", "-y", package_name], check=True)
-        print(f"[✓] Installed {package_name} on Linux.")
-    except subprocess.CalledProcessError:
-        print(f"[!] Failed to install {package_name} on Linux. Please install it manually.")
+        subprocess.check_call([str(py_exe), "-m", "pip", "install", "--upgrade", "pip"])
+    except subprocess.CalledProcessError as e:
+        print(f"[!] pip upgrade failed (non-fatal): rc={e.returncode}")
+    subprocess.check_call([str(py_exe), "-m", "pip", "install", "-r", str(REQ_FILE)])
 
-def install_on_windows(package_name):
-    if package_name:
+
+
+def launch_app():
+    py_name = "python.exe" if os.name == "nt" else "python"
+    py_exe = VENV_DIR / ("Scripts" if os.name == "nt" else "bin") / py_name
+    main_file = BASE_DIR / "main.py"
+
+    if not py_exe.exists():
+        print(f"[-] venv interpreter not found: {py_exe}")
+        sys.exit(1)
+    if not main_file.exists():
+        print(f"[-] main.py not found: {main_file}")
+        sys.exit(1)
+
+    print("\n✅ Installation complete! Launching ReconCraft with:")
+    print(f"  {py_exe} {main_file}\n")
+
+    if os.name == "nt":
+        # On Windows, spawn a new detached process and exit the installer.
+        DETACHED_PROCESS = 0x00000008
+        CREATE_NEW_PROCESS_GROUP = 0x00000200
         try:
-            subprocess.run(["winget", "install", "-e", "--id", package_name], check=True)
-            print(f"[✓] Installed {package_name} on Windows using winget.")
-        except subprocess.CalledProcessError:
-            print(f"[!] Failed to install {package_name} via winget. Please install it manually.")
+            subprocess.Popen(
+                [str(py_exe), str(main_file)],
+                cwd=str(BASE_DIR),
+                creationflags=DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP,
+                close_fds=True,
+            )
+        except Exception as e:
+            print(f"[!] Failed to launch GUI: {e}")
+            sys.exit(1)
+        sys.exit(0)
     else:
-        print(f"[!] No known Windows package mapping. Please install this tool manually.")
+        # On Linux/macOS, replace current process
+        os.execv(str(py_exe), [str(py_exe), str(main_file)])
 
-def check_and_install_tools():
-    system_platform = platform.system().lower()
-    print(f"[+] Detected OS: {system_platform.capitalize()}")
-    for tool, pkg_map in tools.items():
-        if is_tool_installed(tool):
-            print(f"[✓] {tool} is already installed.")
-        else:
-            print(f"[!] {tool} is missing.")
-            missing_tools.append(tool)
-            package_name = pkg_map.get(system_platform)
-            if system_platform == "linux" and package_name:
-                install_on_linux(package_name)
-            elif system_platform == "windows":
-                install_on_windows(package_name)
-            else:
-                print(f"[!] Auto-install not supported for {tool} on {system_platform}. Please install it manually.")
+def main():
+    create_venv()
+    install_deps()
+    launch_app()
 
-def check_testssl():
-    if os.path.isfile("./testssl.sh/testssl.sh"):
-        print("[✓] testssl.sh is present.")
-    else:
-        print("[!] testssl.sh not found. Cloning...")
-        try:
-            subprocess.run(["git", "clone", "https://github.com/drwetter/testssl.sh.git"], check=True)
-            print("[✓] testssl.sh cloned successfully.")
-        except subprocess.CalledProcessError:
-            print("[!] Failed to clone testssl.sh. Please install it manually.")
-
-def install_python_requirements():
-    if os.path.isfile("requirements.txt"):
-        print("[+] Installing Python requirements...")
-        subprocess.run([sys.executable, "-m", "pip", "install", "-r", "requirements.txt"], check=True)
-    else:
-        print("[!] requirements.txt not found. Skipping.")
-
-def summary():
-    if missing_tools:
-        print("\n[!] The following tools were not installed automatically:")
-        for tool in missing_tools:
-            print(f"    - {tool}")
-    else:
-        print("\n[✓] All tools installed or already present.")
 
 if __name__ == "__main__":
-    print("=== ReconCraft Python Installer ===")
-    check_and_install_tools()
-    check_testssl()
-    install_python_requirements()
-    summary()
+    main()

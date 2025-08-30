@@ -1,0 +1,77 @@
+# ===================== Python =====================
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# ===================== Virtual Environments =====================
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+pyenv.cfg
+
+# ===================== Logs & Output =====================
+*.log
+*.out
+*.err
+*.pid
+*.gz
+*.dump
+*.bak
+*.swp
+
+# ===================== IDE & Editor Files =====================
+.vscode/
+.idea/
+*.sublime-workspace
+*.sublime-project
+
+# ===================== OS Generated =====================
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+desktop.ini
+$RECYCLE.BIN/
+
+# ===================== Testing & Coverage =====================
+.pytest_cache/
+.coverage
+.tox/
+.nox/
+htmlcov/
+coverage.xml
+check.py
+
+
+# ===================== Jupyter Notebooks =====================
+.ipynb_checkpoints
+
+# ===================== Misc =====================
+*.tmp
+*.cache
+*.mo
+*.pot
+*.zip
+
+# ===================== ReconCraft/TokenEye Specific =====================
+# Ignore scan results, temp outputs, and reports unless needed
+scan_results/
+reports/
+output/
+tmp/
+plugins/__pycache__/
+
+# If you want to keep configs but ignore local overrides
+*.local.yaml
+*.local.json

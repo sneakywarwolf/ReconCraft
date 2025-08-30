@@ -6,9 +6,10 @@ from reconcraft import read_ip_list, load_plugins, scan_target, report_data
 import logging
 import json
 import os
+from core.plugin_loader import discover_plugins
 
 def scan_targets(targets, selected_plugins, status_callback=None, save_to_path=None):
-    plugins = load_plugins(selected_plugins)
+    plugins = discover_plugins(selected_plugins)
     if not plugins:
         logging.error("No plugins loaded.")
         return
