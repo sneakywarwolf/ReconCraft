@@ -8,15 +8,15 @@
 
 
 
-[📦 Installation](#installation) •[📸 Screenshots](#screenshots) •[🛠️ Workflow](#quick-workflow) •[🔌Plugin System](#plugin-system) •[🏗️ Organised Scan Output](#organised-scan-output)
+[📦Installation](#installation) •[📸Screenshots](#screenshots) •[🛠️Workflow](#quick-workflow) •[🔌Plugin System](#plugin-system) •[🏗️Organised Scan Output](#organized-scan-output)
 
 
-## 🚀 Overview
+## 🚀Overview
 
 **ReconCraft** is a modular reconnaissance & vulnerability scanning framework with a modern PyQt5 GUI.  
 It is designed for penetration testers, bug bounty hunters, and security professionals who want efficiency, accuracy, and extensibility.
 
-## ✨ Features
+## ✨Features
 
 ⚡ **Linux Supremacy**- Battle Tested on Linux 🐧<br>
 🔌 **Dynamic plugins** – Add or remove tools in `/plugins`  reflected in UI.<br>
@@ -35,7 +35,7 @@ It is designed for penetration testers, bug bounty hunters, and security profess
  🆓 **Open source** – MIT licensed
 
   
-## ⚙️ **Core Blueprint**
+## ⚙️**Core Blueprint**
 
 ```plaintext
 ReconCraft/  
@@ -51,7 +51,7 @@ ReconCraft/
 ```
   
 
-## 🖥️ GUI Tabs
+## 🖥️GUI Tabs
 <img src="assets/Screenshots/GUI-tabs.png" width="450">
 
 - **Dashboard (Home)** – Summary of completed scans with status indicators. 
@@ -63,7 +63,7 @@ ReconCraft/
 
 
 
-## 🔌 Plugin System
+## 🔌Plugin System
 
 Plugins are **self-contained Python files** under `/plugins`.  
 > **❗ They handle Install Missing tools and all Scan Profiles.❗**
@@ -95,7 +95,7 @@ def run(): ...
   Current plugins include: `nmap`, `amass`, `naabu`, `nuclei`, `testssl`, `subfinder`, `rustscan`, `wafw00f`, `gobuster`, and more.
 
 
-## 🏗️ **Organized Scan Output**
+## 🏗**Organized Scan Output**
 
 ~~~bash
 Scan Results/
@@ -120,7 +120,7 @@ Scan Results/
    └─ machine          			 	 #Future purpose not for current funtioning 
 ~~~
 
-## 📦 Installation
+## 📦Installation
 
 ### Clone Repo + Install + Run
 
@@ -133,7 +133,7 @@ sudo python main.py
 > ⚠️ Use sudo since some tools require sudo rights.
 > Use “Check Tools” or “Install Missing Tools” for help
 
-## 🛠️ **Quick Workflow**
+## 🛠**Quick Workflow**
 
 1.  **Launch ReconCraft**
     -   Run with SUDO for optimal functionality.
@@ -155,7 +155,7 @@ sudo python main.py
     -   Use the CVSS Calculator (v3.1 supported, v4.0 planned) for manual severity assessment.
 
 
-## 📸 Screenshots
+## 📸Screenshots
 
 | &emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp; Scan Tab &emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp; | &emsp;&emsp;&emsp;&emsp;&emsp;&emsp;Check Tools with Dynamic Status&emsp;&emsp;&emsp;&emsp;|
 | ---------------------------------------------------------- |  ---------------------------------------------------------- |
@@ -173,7 +173,8 @@ sudo python main.py
 | ---------------------------------------------------------- |  ---------------------------------------------------------- |
 | <img src="assets/Screenshots/report-1.png" width="400"> | <img src="assets/Screenshots/Themes.png" width="400">|
 
-## 🚧 Upcoming Features
+
+## 🚧Upcoming Features
 
 * Integrating AI Agents (Kindly contribute ;)
 * Dynamic/Impressive Dashboard to List critical items
@@ -198,14 +199,14 @@ sudo python main.py
 **Illegal / Malicious Actions** – No exploitation for harm or personal gain
 **Data Exfiltration** – Accessing or stealing information you’re not authorized to handle
 
-## 🤝 Contributing
+## 🤝Contributing
 
 Contributions, issues, and PRs are welcome!
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
 
 
-## 🛡️ License & Credits
+## 🛡️License & Credits
 
 ReconCraft is released under the MIT License.
 
@@ -214,7 +215,7 @@ ReconCraft is released under the MIT License.
 If you use, extend, or share ReconCraft or any part of it, please provide visible attribution and a link to the original project.
 
 
-## 📬 Contact
+## 📬Contact
 
 *  **GitHub:** [sneakywarwolf](https://github.com/sneakywarwolf)
 *  **LinkedIn:** [Nirmal Chakraborty](https://www.linkedin.com/in/nirmalchak/)
