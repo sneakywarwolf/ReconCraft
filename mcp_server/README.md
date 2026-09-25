@@ -95,9 +95,24 @@ Example configs are in [`examples/`](examples/). Replace
 | `RECONCRAFT_MCP_ALLOWED_TOOLS` | *(all)* | Comma-separated allowlist, e.g. `nmap,httpx,nuclei`. |
 | `RECONCRAFT_MCP_TIMEOUT` | `600` | Per-command wall-clock timeout in seconds (`0` = unbounded). |
 
+## Structured output
+
+Each run also writes a machine-readable manifest at
+`<scan_root>/machine/<tool>/<run_id>/run.json` (schema shared with the GUI's
+`core/report_model.py`): tool, target(s), resolved command, profile, start/end
+times, `status` (`ok`/`error`/`aborted`/`timeout`), and exit code. `run_recon_tool`
+returns the manifest path as `run_json_path`, so an AI client can consume run
+metadata instead of parsing raw tool text.
+
 ## Safety / least privilege
 
 - Commands run as **argv lists** (no `shell=True`), exactly as in the GUI.
+- **Target validation / argument-injection guard**: targets are validated at the
+  MCP boundary before any tool runs. A target containing whitespace or a leading
+  `-` (e.g. `127.0.0.1 -oN /etc/crontab`) is rejected, so it cannot smuggle extra
+  flags into the scanner argv. Hostnames, IPs, CIDRs, and URLs pass.
+- **Process termination escalates** SIGTERM → SIGKILL, so a tool that ignores
+  SIGTERM is still stopped on cancel/timeout.
 - The server **never installs** tools; it only runs binaries already on PATH.
 - Use `RECONCRAFT_MCP_ALLOWED_TOOLS` to restrict the exposed tool surface.
 - `read_result_file` refuses paths outside `RECONCRAFT_MCP_OUTPUT_DIR`.

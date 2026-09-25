@@ -63,6 +63,7 @@ except ModuleNotFoundError:
         )
 
 from core.headless_runner import HeadlessRunner, VALID_PROFILES, new_scan_root
+from core.target_validation import validate_target
 
 
 # --------------------------------------------------------------------------- #
@@ -199,6 +200,18 @@ def run_recon_tool(
     """
     if not target or not str(target).strip():
         return {"ok": False, "error": "A non-empty target is required."}
+
+    # Validate the target at the boundary, before any tool/install checks, so an
+    # argument-injection attempt is always rejected regardless of tool state.
+    _ok_target, _reason = validate_target(str(target))
+    if not _ok_target:
+        return {
+            "ok": False,
+            "status": "rejected",
+            "tool": tool,
+            "target": target,
+            "error": f"Invalid target rejected: {_reason}",
+        }
 
     if not _tool_allowed(tool):
         return {"ok": False, "error": "Tool not permitted by server allowlist."}

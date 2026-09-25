@@ -47,6 +47,8 @@ ReconCraft/
 ├── gui/ # PyQt5 GUI (tabs: Scan, Reports, Settings, Dashboard, CVSS Calc.)  
 ├── plugins/ # Drop-in tool plugins (nmap, amass, nuclei, etc.)  
 ├── mcp_server/ # MCP server exposing plugins to Claude Code / Codex / Kimi  
+├── tests/ # Headless test suite (no GUI / no scanner binaries needed)  
+├── .github/workflows/ # CI (byte-compile + pytest)  
 ├── assets/ # Icons, logos, screenshots  
 ├── requirements.txt # Python dependencies (GUI)  
 ├── requirements-mcp.txt # Optional MCP dependencies  
@@ -155,9 +157,21 @@ env vars, safety notes) are in [`mcp_server/README.md`](mcp_server/README.md).
 **Exposed MCP tools:** `list_recon_tools`, `check_tool_status`, `run_recon_tool`,
 `read_result_file`. Least-privilege controls: `RECONCRAFT_MCP_ALLOWED_TOOLS`
 (tool allowlist), `RECONCRAFT_MCP_TIMEOUT` (per-command timeout),
-`RECONCRAFT_MCP_OUTPUT_DIR` (output confinement). Only scan systems you are
-authorized to test, and keep your client's human-approval gate enabled for
-`run_recon_tool`.
+`RECONCRAFT_MCP_OUTPUT_DIR` (output confinement). Targets are validated to block
+argument injection, and each run also emits a structured `run.json` manifest
+(`machine/<tool>/<run_id>/run.json`). Only scan systems you are authorized to
+test, and keep your client's human-approval gate enabled for `run_recon_tool`.
+
+### 🧪Development / Tests
+
+The headless engine has a test suite that needs neither the GUI nor real scanner
+binaries (it shims a fake tool onto `PATH`). CI runs byte-compile + pytest on
+each push/PR.
+
+```bash
+pip install pytest
+python -m pytest tests/ -q
+```
 
 ### 🖥️Headless CLI (no GUI, no MCP)
 

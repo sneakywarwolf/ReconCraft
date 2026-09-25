@@ -33,6 +33,7 @@ contract from a different entry point.
 
 from __future__ import annotations
 
+import json
 import os
 import signal
 import subprocess
@@ -44,6 +45,7 @@ from threading import Event, Lock
 from typing import Callable, Dict, List, Optional
 
 from core.plugin_loader import discover_plugins
+from core.target_validation import TargetValidationError, validate_target
 
 # Profile keys as defined by plugin DEFAULT_ARGS dictionaries.
 _PROFILE_KEYMAP = {
@@ -75,8 +77,10 @@ class RunResult:
     output: str = ""
     output_path: Optional[str] = None
     exit_code: Optional[int] = None
+    status: str = ""
     started_at: str = ""
     finished_at: str = ""
+    run_json_path: Optional[str] = None
     logs: List[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
@@ -86,6 +90,7 @@ class RunResult:
             "profile": self.profile,
             "ok": self.ok,
             "skipped": self.skipped,
+            "status": self.status,
             "message": self.message,
             "command": self.command,
             "output": self.output,
@@ -93,6 +98,7 @@ class RunResult:
             "exit_code": self.exit_code,
             "started_at": self.started_at,
             "finished_at": self.finished_at,
+            "run_json_path": self.run_json_path,
             "logs": self.logs,
         }
 
@@ -327,7 +333,12 @@ class HeadlessRunner:
         self._active_run_ctx["_timed_out"] = timed_out
         return out_path
 
-    def _terminate(self, proc: "subprocess.Popen") -> None:
+    def _terminate(self, proc: "subprocess.Popen", grace: float = 3.0) -> None:
+        """
+        Stop a process (and its group) with escalation: SIGTERM first, then
+        SIGKILL if it is still alive after ``grace`` seconds. Without the
+        escalation a tool that ignores SIGTERM would survive a cancel/timeout.
+        """
         try:
             if os.name == "nt":
                 try:
@@ -341,6 +352,24 @@ class HeadlessRunner:
                 except Exception:
                     pass
                 proc.terminate()
+        except Exception:
+            pass
+
+        # Escalate to SIGKILL if the process refuses to exit.
+        try:
+            proc.wait(timeout=grace)
+            return
+        except Exception:
+            pass
+        try:
+            if os.name == "nt":
+                proc.kill()
+            else:
+                try:
+                    os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+                except Exception:
+                    pass
+                proc.kill()
         except Exception:
             pass
 
@@ -389,6 +418,57 @@ class HeadlessRunner:
         replaced = template.replace("{{target}}", target).replace("{target}", target)
         return replaced, None
 
+    def _write_run_manifest(
+        self,
+        result: "RunResult",
+        tool_key: str,
+        run_id: str,
+        replaced_args: str,
+    ) -> None:
+        """
+        Write ``machine/<tool>/<run_id>/run.json`` describing the run.
+
+        The schema matches ``core.report_model.load_run_model`` /
+        ``core.scan_thread_patch_snippets.write_run_manifest`` so the GUI Reports
+        tab and MCP clients can consume structured run metadata. Best-effort:
+        failures never affect the run result.
+        """
+        try:
+            scan_root = Path(self.report_root_folder)
+            manifest_dir = scan_root / "machine" / tool_key / run_id
+            manifest_dir.mkdir(parents=True, exist_ok=True)
+            manifest_path = manifest_dir / "run.json"
+
+            raw_log_rel = None
+            if result.output_path:
+                try:
+                    raw_log_rel = os.path.relpath(result.output_path, str(scan_root))
+                except Exception:
+                    raw_log_rel = result.output_path
+
+            data = {
+                "schema_version": "1.0",
+                "scan_id": scan_root.name,
+                "run_id": run_id,
+                "tool": result.tool,
+                "tool_version": None,
+                "targets": [result.target],
+                "command": [result.tool] + [a for a in (replaced_args or "").split() if a],
+                "profile": result.profile,
+                "started_at": result.started_at,
+                "ended_at": result.finished_at,
+                "status": result.status,
+                "exit_code": result.exit_code,
+                "artifacts": {"raw_log": raw_log_rel, "findings": None},
+                "counts": {"critical": 0, "high": 0, "medium": 0, "low": 0, "info": 0},
+            }
+            with open(manifest_path, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+            result.run_json_path = str(manifest_path)
+        except Exception:
+            # Structured metadata is a convenience; never fail a run over it.
+            pass
+
     # ------------------------------------------------------------------ #
     # Public: run a single (tool, target)
     # ------------------------------------------------------------------ #
@@ -426,7 +506,18 @@ class HeadlessRunner:
 
         module = self.plugin_map.get(tool)
         if module is None:
+            result.status = "unsupported"
             result.message = f"Tool '{tool}' is not supported."
+            result.finished_at = datetime.now().isoformat()
+            return result
+
+        # Reject targets that would inject extra command arguments before they
+        # ever reach a plugin's argv (argument-injection guard).
+        ok_target, reason = validate_target(target)
+        if not ok_target:
+            result.ok = False
+            result.status = "rejected"
+            result.message = f"Invalid target rejected: {reason}"
             result.finished_at = datetime.now().isoformat()
             return result
 
@@ -434,6 +525,7 @@ class HeadlessRunner:
         if skip_msg is not None:
             result.skipped = True
             result.ok = True  # skip is not a hard failure (GUI parity)
+            result.status = "skipped"
             result.message = skip_msg
             result.finished_at = datetime.now().isoformat()
             return result
@@ -454,6 +546,7 @@ class HeadlessRunner:
 
         plugin_run = getattr(module, "run", None)
         if not callable(plugin_run):
+            result.status = "error"
             result.message = f"Plugin '{tool}' has no callable run()."
             result.finished_at = datetime.now().isoformat()
             return result
@@ -474,12 +567,16 @@ class HeadlessRunner:
                 _cb,
             )
         except subprocess.CalledProcessError as exc:
+            result.status = "error"
             result.message = f"{tool} failed for {target}: {exc.output}"
             result.finished_at = datetime.now().isoformat()
+            self._write_run_manifest(result, tool_key, run_id, replaced_args)
             return result
         except Exception as exc:
+            result.status = "error"
             result.message = f"{tool} crashed for {target}: {exc}"
             result.finished_at = datetime.now().isoformat()
+            self._write_run_manifest(result, tool_key, run_id, replaced_args)
             return result
         finally:
             ctx = self._active_run_ctx or {}
@@ -502,12 +599,14 @@ class HeadlessRunner:
                 pass
             result.ok = False
             result.skipped = False
+            result.status = "aborted" if aborted else "timeout"
             result.message = (
                 "Aborted by user."
                 if aborted
                 else f"Timed out after {self._current_timeout}s."
             )
             result.finished_at = datetime.now().isoformat()
+            self._write_run_manifest(result, tool_key, run_id, replaced_args)
             return result
 
         # Interpret plugin return value, mirroring ScanThread.run_tool_and_save.
@@ -545,11 +644,14 @@ class HeadlessRunner:
 
         if had_error:
             result.ok = False
+            result.status = "error"
             if not result.message:
                 result.message = f"{tool} reported an error for {target}."
         else:
             result.ok = True
+            result.status = "ok"
             result.message = f"{tool} finished for {target}."
+        self._write_run_manifest(result, tool_key, run_id, replaced_args)
         return result
 
 
