@@ -75,3 +75,8 @@ plugins/__pycache__/
 # If you want to keep configs but ignore local overrides
 *.local.yaml
 *.local.json
+
+# ReconCraft headless / MCP scan output
+mcp_runs/
+cli_runs/
+Scan Results/

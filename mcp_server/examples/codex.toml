@@ -1,0 +1,14 @@
+# OpenAI Codex CLI MCP server config (~/.codex/config.toml).
+# Codex uses stdio MCP servers declared under [mcp_servers.<name>].
+# Replace /ABSOLUTE/PATH/TO/ReconCraft with your clone path.
+
+[mcp_servers.reconcraft]
+command = "python"
+args = ["-m", "mcp_server.server"]
+cwd = "/ABSOLUTE/PATH/TO/ReconCraft"
+
+[mcp_servers.reconcraft.env]
+RECONCRAFT_MCP_OUTPUT_DIR = "/ABSOLUTE/PATH/TO/ReconCraft/mcp_runs"
+RECONCRAFT_MCP_TIMEOUT = "600"
+# Optional least-privilege allowlist, e.g. "nmap,httpx,nuclei"
+RECONCRAFT_MCP_ALLOWED_TOOLS = ""
