@@ -17,7 +17,7 @@ DOCKER_RUN    = ""            # Leave empty unless you want Docker-backed instal
 DEFAULT_ARGS = {
     "Aggressive": "{{target}} -a -v",
     "Normal":     "{{target}} -a",
-    "Passive":    "{{target}}",
+    "Passive":    "DISABLED",
 
     # Custom will be replaced by GUI
     "Custom":     "{{target}}",

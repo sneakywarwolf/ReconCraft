@@ -18,7 +18,7 @@ DOCKER_RUN    = ''            # Leave empty unless you want Docker-backed instal
 DEFAULT_ARGS = {
     "Aggressive": "-u http://{{target}} -e php,html,js,txt -w /usr/share/wordlists/dirb/common.txt -t 50 --random-agent",
     "Normal":     "-u http://{{target}} -e php,html -w /usr/share/wordlists/dirb/common.txt -t 20",
-    "Passive":    "-u http://{{target}} -w /usr/share/wordlists/dirb/small.txt -t 5",
+    "Passive":    "DISABLED",
     "Custom": "{{target}}"
 }
 

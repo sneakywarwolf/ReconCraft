@@ -18,7 +18,7 @@ DOCKER_RUN    = ''            # Leave empty unless you want Docker-backed instal
 DEFAULT_ARGS = {
     "Aggressive": "-host {{target}} -p - -rate 10000 -c 1000 -verify",
     "Normal":     "-host {{target}} -top-ports 1000 -rate 1000 -c 100",
-    "Passive":    "-host {{target}} -top-ports 100 -rate 100 -c 50",
+    "Passive":    "DISABLED",
     "Custom": "{{target}}"
 }
 

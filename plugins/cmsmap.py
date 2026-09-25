@@ -17,7 +17,7 @@ DOCKER_RUN    = ""            # Leave empty unless you want Docker-backed instal
 DEFAULT_ARGS = {
     "Aggressive": "-t http://{{target}} -a -f -v",
     "Normal":     "-t http://{{target}} -a",
-    "Passive":    "-t http://{{target}}",
+    "Passive":    "DISABLED",
 
     # GUI replaces with user input when profile=Custom
     "Custom":     "{{target}}",

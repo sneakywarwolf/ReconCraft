@@ -18,7 +18,7 @@ DOCKER_RUN    = ''            # Leave empty unless you want Docker-backed instal
 DEFAULT_ARGS = {
     "Aggressive": "-L {{target}} -U '%' -N -d 3",
     "Normal":     "-L {{target}} -U '%' -N",
-    "Passive":    "-L {{target}} -N",
+    "Passive":    "DISABLED",
     "Custom": "{{target}}"
 }
 

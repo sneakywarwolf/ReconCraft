@@ -18,7 +18,7 @@ DOCKER_RUN    = ''            # Leave empty unless you want Docker-backed instal
 DEFAULT_ARGS = {
     "Aggressive": "-u http://{{target}} -t /usr/share/nuclei-templates/ -severity info,low,medium,high,critical -rate-limit 2000 -retries 3",
     "Normal":     "-u http://{{target}} -t /usr/share/nuclei-templates/ -severity medium,high,critical -rate-limit 500",
-    "Passive":    "-u http://{{target}} -t /usr/share/nuclei-templates/ -severity high,critical -rate-limit 100",
+    "Passive":    "DISABLED",
     "Custom": "-u http://{{target}}"
 }
 

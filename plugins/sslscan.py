@@ -18,7 +18,7 @@ DOCKER_RUN    = ''            # Leave empty unless you want Docker-backed instal
 DEFAULT_ARGS = {
     "Aggressive": "--no-failed --ssl2 --ssl3 --tlsall --show-certificate {{target}}",
     "Normal":     "--no-failed --tlsall {{target}}",
-    "Passive":    "--tls1_2 {{target}}",
+    "Passive":    "DISABLED",
     "Custom": "{{target}}"
 }
 

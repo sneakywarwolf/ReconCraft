@@ -18,7 +18,7 @@ DOCKER_RUN    = ''            # Leave empty unless you want Docker-backed instal
 DEFAULT_ARGS = {
     "Aggressive": "-u http://{{target}} --ra --tor --skip --force-ssl --threads 50",
     "Normal":     "-u http://{{target}} --ra --threads 10",
-    "Passive":    "-u http://{{target}}",
+    "Passive":    "DISABLED",
     "Custom": "{{target}}"
 }
 

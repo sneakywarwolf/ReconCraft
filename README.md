@@ -62,6 +62,11 @@ ReconCraft/
 - **Dashboard (Home)** – Summary of completed scans with status indicators. 
 - **Scan** – Select plugins, configure arguments, start/abort scans. 
 - **Settings** – Choose scan profiles (`Aggressive`, `Normal`, `Passive`, `Custom`).
+  - **`Passive` is non-intrusive**: it runs only OSINT/DNS footprinting
+    (`amass -passive`, `subfinder -passive`, `dnsrecon`, `dig`) and sends no
+    scan or attack traffic to the target. All active tools (port scans, web
+    fuzzing, vuln scans, brute force, TLS/SMB/SNMP probing) are `DISABLED` under
+    `Passive` — use `Normal`/`Aggressive`/`Custom` for those.
 - **Reports** – Browse & view reports directly within the UI.   
 - **CVSS Calc.** – Interactive CVSS 3.1 base score calculator.
 

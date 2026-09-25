@@ -18,7 +18,7 @@ DOCKER_RUN    = ''            # Leave empty unless you want Docker-backed instal
 DEFAULT_ARGS = {
     "Aggressive": "-L /usr/share/wordlists/usernames.txt -P /usr/share/wordlists/rockyou.txt {{target}} ssh -t 64 -f -V",
     "Normal":     "-L /usr/share/wordlists/usernames.txt -P /usr/share/wordlists/rockyou.txt {{target}} ssh -t 16",
-    "Passive":    "-l admin -P /usr/share/wordlists/rockyou.txt {{target}} ssh -t 4",
+    "Passive":    "DISABLED",
     "Custom": "{{target}}"
 }
 

@@ -18,7 +18,7 @@ DOCKER_RUN    = ''            # Leave empty unless you want Docker-backed instal
 DEFAULT_ARGS = {
     "Aggressive": "-h http://{{target}} -Tuning 123456789abcde -maxtime 1h -C all",
     "Normal":     "-h http://{{target}} -Tuning 12345 -maxtime 30m",
-    "Passive":    "-h http://{{target}} -Tuning 2 -maxtime 10m",
+    "Passive":    "DISABLED",
     "Custom": "{{target}}"
 }
 
