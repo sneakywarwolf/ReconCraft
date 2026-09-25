@@ -20,7 +20,7 @@ DOCKER_RUN    = ""            # Leave empty unless you want Docker-backed instal
 DEFAULT_ARGS = {
     "Aggressive": "-v2c -c public {{target}} 1 -t 10 -r 3",
     "Normal":     "-v2c -c public {{target}} 1",
-    "Passive":    "-v1 -c public {{target}} 1",
+    "Passive":    "DISABLED",
 
     "Custom":     "{{target}}",                               # GUI replaces with user input when profile=Custom
 }

@@ -41,12 +41,17 @@ It is designed for penetration testers, bug bounty hunters, and security profess
 ReconCraft/  
 
 ├── main.py # Entry point for GUI  
+├── reconcraft_cli.py # Headless CLI (GUI-free plugin runner)  
 ├── install.py # Installer script  
-├── core/ # Core engine (controller, scan thread, installer utils, file conventions, cvss_calc)  
+├── core/ # Core engine (controller, scan thread, headless runner, installer utils, file conventions, cvss_calc)  
 ├── gui/ # PyQt5 GUI (tabs: Scan, Reports, Settings, Dashboard, CVSS Calc.)  
 ├── plugins/ # Drop-in tool plugins (nmap, amass, nuclei, etc.)  
+├── mcp_server/ # MCP server exposing plugins to Claude Code / Codex / Kimi  
+├── tests/ # Headless test suite (no GUI / no scanner binaries needed)  
+├── .github/workflows/ # CI (byte-compile + pytest)  
 ├── assets/ # Icons, logos, screenshots  
-├── requirements.txt # Python dependencies  
+├── requirements.txt # Python dependencies (GUI)  
+├── requirements-mcp.txt # Optional MCP dependencies  
 └── README.md 
 ```
   
@@ -57,6 +62,11 @@ ReconCraft/
 - **Dashboard (Home)** – Summary of completed scans with status indicators. 
 - **Scan** – Select plugins, configure arguments, start/abort scans. 
 - **Settings** – Choose scan profiles (`Aggressive`, `Normal`, `Passive`, `Custom`).
+  - **`Passive` is non-intrusive**: it runs only OSINT/DNS footprinting
+    (`amass -passive`, `subfinder -passive`, `dnsrecon`, `dig`) and sends no
+    scan or attack traffic to the target. All active tools (port scans, web
+    fuzzing, vuln scans, brute force, TLS/SMB/SNMP probing) are `DISABLED` under
+    `Passive` — use `Normal`/`Aggressive`/`Custom` for those.
 - **Reports** – Browse & view reports directly within the UI.   
 - **CVSS Calc.** – Interactive CVSS 3.1 base score calculator.
 
@@ -119,6 +129,64 @@ Scan Results/
    │     └─ nmap    └─ 20250825_032340/ (raw_nmap.log …)
    └─ machine          			 	 #Future purpose not for current funtioning 
 ~~~
+
+## 🤖MCP Integration (Claude Code / Codex / Kimi)
+
+ReconCraft can be driven by **MCP-capable AI coding clients** — **Claude Code**,
+**OpenAI Codex**, **Kimi Code**, Cursor, Cline, Windsurf, and others — through a
+built-in **Model Context Protocol (MCP)** server. The client can then trigger
+ReconCraft's tools directly (list tools, check installs, run a scan against an
+authorized target, read results).
+
+This is **additive and non-invasive**: the MCP server reuses the *exact* plugin
+execution contract that the GUI uses (via `core/headless_runner.py`) and does
+**not** modify the PyQt GUI, `core/scan_thread.py`, or any plugin. MCP-initiated
+scans produce the same on-disk layout shown above, so results stay browsable.
+
+```
+MCP client ──stdio──► mcp_server/server.py ──► core/headless_runner.py ──► plugins/*.py (unchanged) ──► nmap / nuclei / httpx / ...
+```
+
+**Install (optional deps) & configure:**
+
+```bash
+pip install -r requirements-mcp.txt        # installs mcp[cli]
+# Claude Code:
+claude mcp add reconcraft -- python -m mcp_server.server   # run from project root
+```
+
+Ready-made configs for each client live in
+[`mcp_server/examples/`](mcp_server/examples/), and full details (exposed tools,
+env vars, safety notes) are in [`mcp_server/README.md`](mcp_server/README.md).
+
+**Exposed MCP tools:** `list_recon_tools`, `check_tool_status`, `run_recon_tool`,
+`read_result_file`. Least-privilege controls: `RECONCRAFT_MCP_ALLOWED_TOOLS`
+(tool allowlist), `RECONCRAFT_MCP_TIMEOUT` (per-command timeout),
+`RECONCRAFT_MCP_OUTPUT_DIR` (output confinement). Targets are validated to block
+argument injection, and each run also emits a structured `run.json` manifest
+(`machine/<tool>/<run_id>/run.json`). Only scan systems you are authorized to
+test, and keep your client's human-approval gate enabled for `run_recon_tool`.
+
+### 🧪Development / Tests
+
+The headless engine has a test suite that needs neither the GUI nor real scanner
+binaries (it shims a fake tool onto `PATH`). CI runs byte-compile + pytest on
+each push/PR.
+
+```bash
+pip install pytest
+python -m pytest tests/ -q
+```
+
+### 🖥️Headless CLI (no GUI, no MCP)
+
+The same engine is also a plain CLI for scripting:
+
+```bash
+python reconcraft_cli.py list
+python reconcraft_cli.py status nmap
+python reconcraft_cli.py run nmap 127.0.0.1 --profile Normal
+```
 
 ## 📦Installation
 

@@ -18,7 +18,7 @@ DOCKER_RUN    = ''            # Leave empty unless you want Docker-backed instal
 DEFAULT_ARGS = {
     "Aggressive": "--fast --wide --parallel --full {{target}}",
     "Normal":     "--parallel {{target}}",
-    "Passive":    "{{target}}",
+    "Passive":    "DISABLED",
     "Custom": "{{target}}"
 }
 

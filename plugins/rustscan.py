@@ -18,7 +18,7 @@ DOCKER_RUN    = 'docker run --rm -i --name rustscan rustscan/rustscan:alpine'   
 DEFAULT_ARGS = {
     "Aggressive": "-a {{target}} --ulimit 5000 -b 2500 -t 5000 --scan-order random --greppable -- -A -T4",
     "Normal":     "-a {{target}} --ulimit 4096 -b 1500 -- -sV -T3",
-    "Passive":    "-a {{target}} -b 500 -- -Pn -T2",
+    "Passive":    "DISABLED",
     "Custom": "{{target}}"
 }
 

@@ -18,7 +18,7 @@ DOCKER_RUN    = ''            # Leave empty unless you want Docker-backed instal
 DEFAULT_ARGS = {
     "Aggressive": "enum -d {{target}} -active -brute -w /usr/share/seclists/Discovery/DNS/subdomains-top1million-110000.txt -alts -timeout 30 -dns-qps 200 -tr 8.8.8.8,1.1.1.1",
     "Normal":     "intel -whois -d {{target}} -timeout 25 -addr {{target}} ",
-    "Passive":    "enum -d {{target}} --list ",
+    "Passive":    "enum -passive -d {{target}}",
     "Custom": "{{target}}"
 }
 

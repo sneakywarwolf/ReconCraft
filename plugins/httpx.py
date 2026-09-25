@@ -18,7 +18,7 @@ DOCKER_RUN    = ''            # Leave empty unless you want Docker-backed instal
 DEFAULT_ARGS = {
     "Aggressive": "http://{{target}} --follow-redirects --http2 --timeout 15 -v -h 'User-Agent KaliAggressiveScan' -h 'Accept */*' --cookies session=aggr123",
     "Normal":     "http://{{target}} --follow-redirects --timeout 10 -h 'User-Agent KaliNormalScan' --no-verify",
-    "Passive":    "http://{{target}} --timeout 5",
+    "Passive":    "DISABLED",
     "Custom": "https://{{target}}"
 }
 

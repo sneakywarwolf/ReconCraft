@@ -21,7 +21,7 @@ DOCKER_RUN    = ''            # Leave empty unless you want Docker-backed instal
 DEFAULT_ARGS = {
     "Aggressive": "-H -u http://{{target}} -l /usr/share/wordlists/dirbuster/directory-list-2.3-medium.txt -t 50 -x php,html,txt,js",
     "Normal":     "-H -u http://{{target}} -l /usr/share/wordlists/dirbuster/directory-list-2.3-small.txt -t 20",
-    "Passive":    "-H -u http://{{target}} -l /usr/share/wordlists/dirbuster/directory-list-2.3-small.txt -t 5",
+    "Passive":    "DISABLED",
     "Custom": "{{target}}"
 }
 

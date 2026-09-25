@@ -1,0 +1,9 @@
+# ReconCraft — optional MCP integration dependencies.
+# Install only if you want to expose ReconCraft tools over the Model Context
+# Protocol (Claude Code, Codex, Kimi Code, Cursor, etc.):
+#     pip install -r requirements-mcp.txt
+#
+# This is intentionally separate from requirements.txt so the GUI install
+# footprint is unchanged for users who do not need MCP.
+
+mcp[cli]>=1.2

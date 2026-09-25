@@ -1,0 +1,15 @@
+{
+  "//": "Claude Code / Claude Desktop style MCP config. Merge the 'reconcraft' entry into your mcpServers map. Replace /ABSOLUTE/PATH/TO/ReconCraft with your clone path and set the target output dir.",
+  "mcpServers": {
+    "reconcraft": {
+      "command": "python",
+      "args": ["-m", "mcp_server.server"],
+      "cwd": "/ABSOLUTE/PATH/TO/ReconCraft",
+      "env": {
+        "RECONCRAFT_MCP_OUTPUT_DIR": "/ABSOLUTE/PATH/TO/ReconCraft/mcp_runs",
+        "RECONCRAFT_MCP_TIMEOUT": "600",
+        "RECONCRAFT_MCP_ALLOWED_TOOLS": ""
+      }
+    }
+  }
+}

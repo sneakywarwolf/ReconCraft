@@ -18,7 +18,7 @@ DOCKER_RUN    = ''            # Leave empty unless you want Docker-backed instal
 DEFAULT_ARGS = {
     "Aggressive": "-u http://{{target}}/FUZZ -w /usr/share/wordlists/dirbuster/directory-list-2.3-medium.txt -t 100 -mc 200,302,403",
     "Normal":     "-u http://{{target}}/FUZZ -w /usr/share/wordlists/dirb/common.txt -t 40 -mc 200,302",
-    "Passive":    "-u http://{{target}}/FUZZ -w /usr/share/wordlists/dirb/small.txt -t 10 -mc 200",
+    "Passive":    "DISABLED",
     "Custom": "{{target}}"
 }
 

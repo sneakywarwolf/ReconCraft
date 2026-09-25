@@ -1,0 +1,16 @@
+{
+  "//": "Generic stdio MCP config used by Kimi Code, Cursor, Cline, Windsurf and most MCP clients. Some clients read this from an 'mcp.json' or a settings 'mcp.servers' block; the shape below (a 'mcpServers' map) is the common denominator. Replace the absolute path.",
+  "mcpServers": {
+    "reconcraft": {
+      "command": "python",
+      "args": ["-m", "mcp_server.server"],
+      "cwd": "/ABSOLUTE/PATH/TO/ReconCraft",
+      "transport": "stdio",
+      "env": {
+        "RECONCRAFT_MCP_OUTPUT_DIR": "/ABSOLUTE/PATH/TO/ReconCraft/mcp_runs",
+        "RECONCRAFT_MCP_TIMEOUT": "600",
+        "RECONCRAFT_MCP_ALLOWED_TOOLS": ""
+      }
+    }
+  }
+}
